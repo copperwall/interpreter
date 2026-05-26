@@ -1,0 +1,13 @@
+/**
+  hello
+
+  /*
+    Nested!
+*/
+
+  * /bin
+
+  */
+fun thing(a, b)  { a + b}
+
+// Other comment

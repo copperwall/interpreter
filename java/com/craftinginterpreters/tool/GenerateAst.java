@@ -1,10 +1,7 @@
 package com.craftinginterpreters.tool;
 
-import java.io.FileNotFoundException;
-import java.io.IOError;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -24,8 +21,18 @@ public class GenerateAst {
             Arrays.asList(
                 "Binary   : Expr left, Token operator, Expr right",
                 "Grouping : Expr expression",
+                "Comma    : List<Expr> expressions",
                 "Literal  : Object value",
                 "Unary    : Token operator, Expr right"
+            )
+        );
+
+        defineAst(
+            outputDir,
+            "Stmt",
+            Arrays.asList(
+                "Expression : Expr expression",
+                "Print      : Expr expression"
             )
         );
     }

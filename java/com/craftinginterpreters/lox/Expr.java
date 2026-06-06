@@ -6,6 +6,7 @@ abstract class Expr{
     interface Visitor<R> {
        R visitBinaryExpr(Binary expr);
        R visitGroupingExpr(Grouping expr);
+       R visitCommaExpr(Comma expr);
        R visitLiteralExpr(Literal expr);
        R visitUnaryExpr(Unary expr);
     }
@@ -37,6 +38,19 @@ static class Grouping extends Expr {
         return visitor.visitGroupingExpr(this);
     }
    final Expr expression;
+
+}
+static class Comma extends Expr {
+    Comma(
+      List<Expr> expressions) {
+        this.expressions = expressions;
+    }
+
+    @Override
+    <R> R accept(Visitor<R> visitor) {
+        return visitor.visitCommaExpr(this);
+    }
+   final List<Expr> expressions;
 
 }
 static class Literal extends Expr {

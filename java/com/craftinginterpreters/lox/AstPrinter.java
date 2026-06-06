@@ -1,5 +1,8 @@
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
+import java.util.List;
+
 class AstPrinter implements Expr.Visitor<String> {
 
     String print(Expr expr) {
@@ -14,6 +17,11 @@ class AstPrinter implements Expr.Visitor<String> {
     @Override
     public String visitGroupingExpr(Expr.Grouping expr) {
         return parenthesize("group", expr.expression);
+    }
+
+    @Override
+    public String visitCommaExpr(Expr.Comma expr) {
+        return parenthesize("comma", expr.expressions.toArray(new Expr[0]));
     }
 
     @Override

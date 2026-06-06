@@ -3,10 +3,14 @@ package com.craftinginterpreters.lox;
 import java.util.ArrayList;
 import java.util.List;
 
-class AstPrinter implements Expr.Visitor<String> {
+class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
     String print(Expr expr) {
         return expr.accept(this);
+    }
+
+    String print(Stmt stmt) {
+        return stmt.accept(this);
     }
 
     @Override
@@ -36,6 +40,35 @@ class AstPrinter implements Expr.Visitor<String> {
     @Override
     public String visitUnaryExpr(Expr.Unary expr) {
         return parenthesize(expr.operator.lexeme, expr.right);
+    }
+
+    @Override
+    public String visitVariableExpr(Expr.Variable expr) {
+        return expr.name.toString();
+    }
+
+    @Override
+    public String visitPrintStmt(Stmt.Print stmt) {
+        return parenthesize("print", stmt.expression);
+    }
+
+    @Override
+    public String visitExpressionStmt(Stmt.Expression stmt) {
+        // TODO: This is pretty printing the token, not the lexeme.
+        return parenthesize("statement", stmt.expression);
+    }
+
+    @Override
+    public String visitVarStmt(Stmt.Var stmt) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("(").append("var ").append(stmt.name.lexeme);
+
+        if (stmt.initializer != null) {
+            builder.append(" = ").append(stmt.initializer.accept(this));
+        }
+        builder.append(")");
+
+        return builder.toString();
     }
 
     private String parenthesize(String name, Expr... exprs) {

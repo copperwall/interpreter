@@ -26,7 +26,7 @@ public class Lox {
 
     public static void runFile(String file) throws IOException {
         byte[] bytes = Files.readAllBytes(Paths.get(file));
-        run(new String(bytes, Charset.defaultCharset()));
+        run(new String(bytes, Charset.defaultCharset()), new Interpreter());
 
         if (hadError) {
             System.exit(65);
@@ -40,6 +40,7 @@ public class Lox {
     public static void runPrompt() throws IOException {
         InputStreamReader input = new InputStreamReader(System.in);
         BufferedReader reader = new BufferedReader(input);
+        Interpreter interpreter = new Interpreter();
 
         for (;;) {
             System.out.print("> ");
@@ -49,27 +50,29 @@ public class Lox {
                 break;
             }
 
-            run(line);
+            run(line, interpreter);
             hadError = false;
         }
     }
 
-    public static void run(String code) {
+    public static void run(String code, Interpreter interpreter) {
         Scanner scanner = new Scanner(code);
         List<Token> tokens = scanner.scanTokens();
 
         Parser parser = new Parser(tokens);
 
-        Expr expression = parser.parse();
+        List<Stmt> statements = parser.parse();
 
         if (hadError) {
             return;
         }
 
-        System.out.println(new AstPrinter().print(expression));
+        // TODO: Add command line flag for displaying AST
+        for (Stmt statement : statements) {
+            System.out.println(new AstPrinter().print(statement));
+        }
 
-        Interpreter interpreter = new Interpreter();
-        interpreter.interpret(expression);
+        interpreter.interpret(statements);
     }
 
     static void error(int line, String message) {
@@ -77,7 +80,6 @@ public class Lox {
     }
 
     static void runtimeError(RuntimeError e) {
-        System.out.println(e.token);
         System.err.println(e.getMessage() + "\n[line " + e.token.line + "]");
 
         hadRuntimeError = true;

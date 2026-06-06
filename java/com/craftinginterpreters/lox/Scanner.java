@@ -36,7 +36,7 @@ public class Scanner {
     private final List<Token> tokens = new ArrayList<>();
     private int start = 0;
     private int current = 0;
-    private int line = -1;
+    private int line = 1;
 
     public Scanner(String source) {
         this.source = source;

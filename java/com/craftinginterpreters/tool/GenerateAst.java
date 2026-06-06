@@ -23,7 +23,8 @@ public class GenerateAst {
                 "Grouping : Expr expression",
                 "Comma    : List<Expr> expressions",
                 "Literal  : Object value",
-                "Unary    : Token operator, Expr right"
+                "Unary    : Token operator, Expr right",
+                "Variable : Token name"
             )
         );
 
@@ -32,7 +33,9 @@ public class GenerateAst {
             "Stmt",
             Arrays.asList(
                 "Expression : Expr expression",
-                "Print      : Expr expression"
+                "Print      : Expr expression",
+                // Initializer is optional, null if DNE
+                "Var        : Token name, Expr initializer"
             )
         );
     }

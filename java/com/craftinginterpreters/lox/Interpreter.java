@@ -1,15 +1,22 @@
 package com.craftinginterpreters.lox;
 
-class Interpreter implements Expr.Visitor<Object> {
+import java.util.List;
 
-    void interpret(Expr expression) {
+class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
+
+    private Environment environment = new Environment();
+
+    void interpret(List<Stmt> stmts) {
         try {
-            Object result = evaluate(expression);
-            System.out.println(result);
+            for (Stmt stmt : stmts) {
+                execute(stmt);
+            }
         } catch (RuntimeError e) {
             Lox.runtimeError(e);
         }
     }
+
+    // Expression visitors
 
     @Override
     public Object visitLiteralExpr(Expr.Literal expr) {
@@ -106,8 +113,46 @@ class Interpreter implements Expr.Visitor<Object> {
         return null;
     }
 
+    @Override
+    public Object visitVariableExpr(Expr.Variable expr) {
+        return environment.get(expr.name);
+    }
+
+    // Statement visitors
+
+    @Override
+    public Void visitExpressionStmt(Stmt.Expression stmt) {
+        // MAYBE_TODO: print statement value when in REPL mode.
+        evaluate(stmt.expression);
+        return null;
+    }
+
+    @Override
+    public Void visitPrintStmt(Stmt.Print stmt) {
+        // Evaluate value and then print it?
+        Object val = evaluate(stmt.expression);
+        System.out.println(stringify(val));
+        return null;
+    }
+
+    @Override
+    public Void visitVarStmt(Stmt.Var stmt) {
+        Object val = null;
+
+        if (stmt.initializer != null) {
+            val = stmt.initializer.accept(this);
+        }
+
+        environment.define(stmt.name.lexeme, val);
+        return null;
+    }
+
     private Object evaluate(Expr expression) {
         return expression.accept(this);
+    }
+
+    private void execute(Stmt stmt) {
+        stmt.accept(this);
     }
 
     private boolean isEqual(Object left, Object right) {
@@ -120,6 +165,23 @@ class Interpreter implements Expr.Visitor<Object> {
         }
 
         return left.equals(right);
+    }
+
+    private String stringify(Object obj) {
+        if (obj == null) return "nil";
+
+        if (obj instanceof Double) {
+            String objStr = obj.toString();
+
+            // Cut off trailing zero for whole numbers.
+            if (objStr.endsWith(".0")) {
+                return objStr.substring(0, objStr.length() - 2);
+            }
+
+            return objStr;
+        }
+
+        return obj.toString();
     }
 
     private boolean isTruthy(Object obj) {

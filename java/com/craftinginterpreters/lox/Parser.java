@@ -4,10 +4,12 @@ import static com.craftinginterpreters.lox.TokenType.BANG;
 import static com.craftinginterpreters.lox.TokenType.BANG_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.COMMA;
 import static com.craftinginterpreters.lox.TokenType.EOF;
+import static com.craftinginterpreters.lox.TokenType.EQUAL;
 import static com.craftinginterpreters.lox.TokenType.EQUAL_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.FALSE;
 import static com.craftinginterpreters.lox.TokenType.GREATER;
 import static com.craftinginterpreters.lox.TokenType.GREATER_EQUAL;
+import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
 import static com.craftinginterpreters.lox.TokenType.LEFT_PAREN;
 import static com.craftinginterpreters.lox.TokenType.LESS;
 import static com.craftinginterpreters.lox.TokenType.LESS_EQUAL;
@@ -15,11 +17,14 @@ import static com.craftinginterpreters.lox.TokenType.MINUS;
 import static com.craftinginterpreters.lox.TokenType.NIL;
 import static com.craftinginterpreters.lox.TokenType.NUMBER;
 import static com.craftinginterpreters.lox.TokenType.PLUS;
+import static com.craftinginterpreters.lox.TokenType.PRINT;
 import static com.craftinginterpreters.lox.TokenType.RIGHT_PAREN;
+import static com.craftinginterpreters.lox.TokenType.SEMICOLON;
 import static com.craftinginterpreters.lox.TokenType.SLASH;
 import static com.craftinginterpreters.lox.TokenType.STAR;
 import static com.craftinginterpreters.lox.TokenType.STRING;
 import static com.craftinginterpreters.lox.TokenType.TRUE;
+import static com.craftinginterpreters.lox.TokenType.VAR;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,16 +37,73 @@ class Parser {
     private int current = 0;
 
     Parser(List<Token> tokens) {
-        System.out.println(tokens);
         this.tokens = tokens;
     }
 
-    Expr parse() {
+    List<Stmt> parse() {
+        ArrayList<Stmt> stmts = new ArrayList<>();
+
+        while (!isAtEnd()) {
+            stmts.add(declaration());
+        }
+
+        return stmts;
+    }
+
+    private Stmt declaration() {
         try {
-            return comma();
-        } catch (ParseError e) {
+            if (match(VAR)) return varDeclaration();
+            return statement();
+        } catch (ParseError error) {
+            synchronize();
             return null;
         }
+    }
+
+    private Stmt varDeclaration() {
+        // Already matched var
+        // Read in identifier
+
+        Token name = consume(IDENTIFIER, "Expected variable name");
+        Expr initializer = null;
+        if (match(EQUAL)) {
+            // NOTE: Not saying comma here because that seems confusing to have
+            // as an initializer expression.
+            initializer = expression();
+        }
+
+        consume(SEMICOLON, "Expected semicolon");
+
+        return new Stmt.Var(name, initializer);
+    }
+
+    private Stmt statement() {
+        if (match(PRINT)) {
+            return printStatement();
+        }
+
+        return expressionStatement();
+    }
+
+    private Stmt printStatement() {
+        // Parse expression (already consumed print token)
+        // consume semicolon
+        // return print statement
+
+        Expr expr = comma();
+        consume(SEMICOLON, "Expected semicolon after print statement");
+        return new Stmt.Print(expr);
+    }
+
+    private Stmt expressionStatement() {
+        // Parse expression (already consumed print token)
+        // consume semicolon
+        // return print statement
+
+        // MAYBE_TODO: If in the repl, don't require a semicolon
+        Expr expr = comma();
+        consume(SEMICOLON, "Expected semicolon after statement");
+        return new Stmt.Expression(expr);
     }
 
     // comma
@@ -136,6 +198,11 @@ class Parser {
         if (match(TRUE)) return new Expr.Literal(true);
         if (match(NIL)) return new Expr.Literal(null);
 
+        if (match(IDENTIFIER)) {
+            Token prev = previous();
+            return new Expr.Variable(prev);
+        }
+
         if (match(NUMBER, STRING)) {
             Token prev = previous();
             return new Expr.Literal(prev.literal);
@@ -189,6 +256,29 @@ class Parser {
     private ParseError error(Token token, String message) {
         Lox.error(token.line, message);
         return new ParseError();
+    }
+
+    private void synchronize() {
+        advance();
+
+        // Advance the parser until we're at a new starting point to continue parsing.
+        while (!isAtEnd()) {
+            if (previous().type == SEMICOLON) return;
+
+            switch (peek().type) {
+                case CLASS:
+                case FUN:
+                case VAR:
+                case FOR:
+                case IF:
+                case WHILE:
+                case PRINT:
+                case RETURN:
+                    return;
+            }
+
+            advance();
+        }
     }
 
     private Token consume(TokenType expected, String errorMsg) {

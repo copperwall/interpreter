@@ -19,10 +19,12 @@ public class GenerateAst {
             outputDir,
             "Expr",
             Arrays.asList(
+                "Assign   : Token name, Expr value",
                 "Binary   : Expr left, Token operator, Expr right",
                 "Grouping : Expr expression",
                 "Comma    : List<Expr> expressions",
                 "Literal  : Object value",
+                "Logical  : Expr left, Token operator, Expr right",
                 "Unary    : Token operator, Expr right",
                 "Variable : Token name"
             )
@@ -32,10 +34,13 @@ public class GenerateAst {
             outputDir,
             "Stmt",
             Arrays.asList(
+                "Block      : List<Stmt> statments",
                 "Expression : Expr expression",
+                "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",
                 "Print      : Expr expression",
                 // Initializer is optional, null if DNE
-                "Var        : Token name, Expr initializer"
+                "Var        : Token name, Expr initializer",
+                "While      : Expr condition, Stmt body"
             )
         );
     }

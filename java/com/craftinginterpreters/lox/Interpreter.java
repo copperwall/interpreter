@@ -118,12 +118,50 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         return environment.get(expr.name);
     }
 
+    @Override
+    public Object visitLogicalExpr(Expr.Logical expr) {
+        Object left = evaluate(expr.left);
+
+        if (expr.operator.type == TokenType.OR) {
+            if (isTruthy(left)) {
+                return left;
+            }
+        } else {
+            if (!isTruthy(left)) {
+                return left;
+            }
+        }
+
+        return evaluate(expr.right);
+    }
+
+    @Override
+    public Object visitAssignExpr(Expr.Assign expr) {
+        Object value = evaluate(expr.value);
+        environment.assign(expr.name, value);
+
+        return value;
+    }
+
     // Statement visitors
 
     @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
         // MAYBE_TODO: print statement value when in REPL mode.
         evaluate(stmt.expression);
+        return null;
+    }
+
+    @Override
+    public Void visitIfStmt(Stmt.If stmt) {
+        Object condition = evaluate(stmt.condition);
+
+        if (isTruthy(condition)) {
+            execute(stmt.thenBranch);
+        } else {
+            execute(stmt.elseBranch);
+        }
+
         return null;
     }
 
@@ -137,14 +175,45 @@ class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
 
     @Override
     public Void visitVarStmt(Stmt.Var stmt) {
-        Object val = null;
-
         if (stmt.initializer != null) {
-            val = stmt.initializer.accept(this);
+            Object val = stmt.initializer.accept(this);
+            environment.define(stmt.name.lexeme, val);
+        } else {
+            environment.define(stmt.name.lexeme);
         }
 
-        environment.define(stmt.name.lexeme, val);
         return null;
+    }
+
+    @Override
+    public Void visitWhileStmt(Stmt.While stmt) {
+        while (isTruthy(evaluate(stmt.condition))) {
+            execute(stmt.body);
+        }
+
+        return null;
+    }
+
+    @Override
+    public Void visitBlockStmt(Stmt.Block stmt) {
+        // Add new environment, evalute statements, set environment back to enclosing
+        executeBlock(stmt, new Environment(environment));
+
+        return null;
+    }
+
+    private void executeBlock(Stmt.Block stmt, Environment env) {
+        Environment previous = this.environment;
+
+        try {
+            this.environment = env;
+
+            for (Stmt statement : stmt.statments) {
+                execute(statement);
+            }
+        } finally {
+            this.environment = previous;
+        }
     }
 
     private Object evaluate(Expr expression) {

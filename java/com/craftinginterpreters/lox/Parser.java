@@ -1,23 +1,30 @@
 package com.craftinginterpreters.lox;
 
+import static com.craftinginterpreters.lox.TokenType.AND;
 import static com.craftinginterpreters.lox.TokenType.BANG;
 import static com.craftinginterpreters.lox.TokenType.BANG_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.COMMA;
+import static com.craftinginterpreters.lox.TokenType.ELSE;
 import static com.craftinginterpreters.lox.TokenType.EOF;
 import static com.craftinginterpreters.lox.TokenType.EQUAL;
 import static com.craftinginterpreters.lox.TokenType.EQUAL_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.FALSE;
+import static com.craftinginterpreters.lox.TokenType.FOR;
 import static com.craftinginterpreters.lox.TokenType.GREATER;
 import static com.craftinginterpreters.lox.TokenType.GREATER_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
+import static com.craftinginterpreters.lox.TokenType.IF;
+import static com.craftinginterpreters.lox.TokenType.LEFT_BRACE;
 import static com.craftinginterpreters.lox.TokenType.LEFT_PAREN;
 import static com.craftinginterpreters.lox.TokenType.LESS;
 import static com.craftinginterpreters.lox.TokenType.LESS_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.MINUS;
 import static com.craftinginterpreters.lox.TokenType.NIL;
 import static com.craftinginterpreters.lox.TokenType.NUMBER;
+import static com.craftinginterpreters.lox.TokenType.OR;
 import static com.craftinginterpreters.lox.TokenType.PLUS;
 import static com.craftinginterpreters.lox.TokenType.PRINT;
+import static com.craftinginterpreters.lox.TokenType.RIGHT_BRACE;
 import static com.craftinginterpreters.lox.TokenType.RIGHT_PAREN;
 import static com.craftinginterpreters.lox.TokenType.SEMICOLON;
 import static com.craftinginterpreters.lox.TokenType.SLASH;
@@ -25,8 +32,10 @@ import static com.craftinginterpreters.lox.TokenType.STAR;
 import static com.craftinginterpreters.lox.TokenType.STRING;
 import static com.craftinginterpreters.lox.TokenType.TRUE;
 import static com.craftinginterpreters.lox.TokenType.VAR;
+import static com.craftinginterpreters.lox.TokenType.WHILE;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 class Parser {
@@ -82,17 +91,120 @@ class Parser {
             return printStatement();
         }
 
+        if (match(IF)) {
+            return ifStatement();
+        }
+
+        // for "(" varDecl | exprStmt | ";" expression? ";" expression? ")" statement ;
+        if (match(FOR)) {
+            return forStatement();
+        }
+
+        if (match(WHILE)) {
+            return whileStatement();
+        }
+
+        if (match(LEFT_BRACE)) {
+            return new Stmt.Block(block());
+        }
+
         return expressionStatement();
     }
 
-    private Stmt printStatement() {
-        // Parse expression (already consumed print token)
-        // consume semicolon
-        // return print statement
+    private Stmt forStatement() {
+        consume(LEFT_PAREN, "Expected '(' after 'for'.");
 
+        Stmt initializer;
+        // First is either a varDevl or exprStmt or ";"
+        if (match(SEMICOLON)) {
+            initializer = null;
+        } else if (match(VAR)) {
+            initializer = varDeclaration();
+        } else {
+            initializer = expressionStatement();
+        }
+
+        // Optional condition, non-optional semicolon
+        Expr condition = new Expr.Literal(true);
+        if (!check(SEMICOLON)) {
+            condition = comma();
+        }
+
+        consume(SEMICOLON, "';' expected after optional condition.");
+
+        Expr increment = null;
+        if (!check(RIGHT_PAREN)) {
+            increment = comma();
+        }
+
+        consume(RIGHT_PAREN, "')' expected after optional increment.");
+        Stmt forBody = statement();
+
+        // whileBody needs to be a block, forBody may be a single statement.
+        // This makes a new block and places the forBody with a followup increment.
+        List<Stmt> whileBodyStmts = new ArrayList<>();
+        whileBodyStmts.add(forBody);
+        if (increment != null) {
+            whileBodyStmts.add(new Stmt.Expression(increment));
+        }
+
+        Stmt whileBody = new Stmt.Block(whileBodyStmts);
+
+        Stmt whileStmt = new Stmt.While(condition, whileBody);
+
+        List<Stmt> loopStmts = new ArrayList<>();
+
+        if (initializer != null) {
+            loopStmts.add(initializer);
+        }
+        loopStmts.add(whileStmt);
+        // to desugar, need to return an AST node that represents
+        return new Stmt.Block(loopStmts);
+    }
+
+    // while ( expression ) statement ;
+    private Stmt whileStatement() {
+        consume(LEFT_PAREN, "Expected '(' after 'while'.");
+        Expr condition = comma();
+        consume(RIGHT_PAREN, "Expected ')' after while condition.");
+        Stmt body = statement();
+
+        return new Stmt.While(condition, body);
+    }
+
+    private Stmt ifStatement() {
+        // Matched if already
+        consume(LEFT_PAREN, "Expected '(' after 'if'.");
+        Expr condition = comma();
+        consume(RIGHT_PAREN, "Expected ')' after if condition.");
+
+        Stmt thenBranch = statement();
+        Stmt elseBranch = null;
+
+        if (match(ELSE)) {
+            elseBranch = statement();
+        }
+
+        return new Stmt.If(condition, thenBranch, elseBranch);
+    }
+
+    private Stmt printStatement() {
         Expr expr = comma();
         consume(SEMICOLON, "Expected semicolon after print statement");
         return new Stmt.Print(expr);
+    }
+
+    private List<Stmt> block() {
+        // Consumed opening brace already
+        List<Stmt> stmts = new ArrayList<>();
+
+        // Consume declarations until we hit a RIGHT_BRACE
+        while (!isAtEnd() && !check(RIGHT_BRACE)) {
+            stmts.add(declaration());
+        }
+
+        consume(RIGHT_BRACE, "Expected '}' after block");
+        return stmts;
     }
 
     private Stmt expressionStatement() {
@@ -124,7 +236,53 @@ class Parser {
 
     private Expr expression() {
         // Could place the comma operator here
-        return equality();
+        return assignment();
+    }
+
+    // Parse equality
+    private Expr assignment() {
+        Expr expr = or();
+
+        // If the next token is equal, make sure name is l-value.
+        if (match(EQUAL)) {
+            Token equals = previous();
+            Expr value = assignment();
+
+            if (expr instanceof Expr.Variable) {
+                Token name = ((Expr.Variable) expr).name;
+
+                return new Expr.Assign(name, value);
+            }
+
+            error(equals, "Invalid assignment type");
+        }
+
+        return expr;
+    }
+
+    private Expr or() {
+        Expr expr = and();
+
+        while (match(OR)) {
+            Token operator = previous();
+            Expr right = and();
+            expr = new Expr.Logical(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    private Expr and() {
+        Expr expr = equality();
+
+        while (match(AND)) {
+            Token operator = previous();
+            Expr right = equality();
+
+            expr = new Expr.Logical(expr, operator, right);
+        }
+
+        return expr;
     }
 
     private Expr equality() {

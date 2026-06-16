@@ -19,9 +19,15 @@ jlox: $(BUILD_DIR)/classes
 	@printf '#!/bin/sh\nexec java -cp "$(CURDIR)/$(BUILD_DIR)/classes" $(MAIN_CLASS) "$$@"\n' > jlox
 	@chmod +x jlox
 
-generate: $(BUILD_DIR)/classes
+TOOL_SOURCES := $(shell find $(SRC_DIR)/com/craftinginterpreters/tool -name "*.java")
+
+$(BUILD_DIR)/tool: $(TOOL_SOURCES) | $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/classes
+	javac -d $(BUILD_DIR)/classes $(TOOL_SOURCES)
+	@touch $(BUILD_DIR)/tool
+
+generate: $(BUILD_DIR)/tool
 	java -cp $(BUILD_DIR)/classes $(GENERATE_AST_CLASS) $(SRC_DIR)/com/craftinginterpreters/lox
-	$(MAKE) $(BUILD_DIR)/classes
 
 clean:
 	rm -rf $(BUILD_DIR) jlox

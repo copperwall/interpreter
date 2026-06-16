@@ -2,6 +2,8 @@ package com.craftinginterpreters.lox;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
@@ -49,7 +51,7 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
 
     @Override
     public String visitVariableExpr(Expr.Variable expr) {
-        return expr.name.toString();
+        return expr.name.lexeme;
     }
 
     @Override
@@ -66,14 +68,72 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     }
 
     @Override
+    public String visitCallExpr(Expr.Call expr) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("(call ").append(expr.callee.accept(this)).append("(");
+
+        for (Expr arg : expr.arguments) {
+            builder.append(arg.accept(this));
+            builder.append(",");
+        }
+
+        // Trim last comma if args
+        if (expr.arguments.size() > 0) {
+            builder.deleteCharAt(builder.length() - 1);
+        }
+
+        builder.append(")");
+        builder.append(")");
+
+        return builder.toString();
+    }
+
+    @Override
     public String visitPrintStmt(Stmt.Print stmt) {
         return parenthesize("print", stmt.expression);
     }
 
     @Override
     public String visitExpressionStmt(Stmt.Expression stmt) {
-        // TODO: This is pretty printing the token, not the lexeme.
         return parenthesize("statement", stmt.expression);
+    }
+
+    @Override
+    public String visitReturnStmt(Stmt.Return stmt) {
+        if (stmt.value != null) {
+            return "(return " + stmt.value.accept(this) + ";)";
+        }
+
+        return "(return;)";
+    }
+
+    @Override
+    public String visitFunctionStmt(Stmt.Function stmt) {
+        StringBuilder builder = new StringBuilder();
+        builder
+            .append("(")
+            .append("fn ")
+            .append(stmt.name.lexeme)
+            .append("(")
+            .append(
+                String.join(
+                    ", ",
+                    stmt.params
+                        .stream()
+                        .map(t -> t.lexeme)
+                        .collect(Collectors.toList())
+                )
+            )
+            .append(") {");
+
+        for (Stmt body : stmt.body) {
+            builder.append(body.accept(this));
+        }
+        builder.append("}");
+
+        builder.append(")");
+
+        return builder.toString();
     }
 
     @Override

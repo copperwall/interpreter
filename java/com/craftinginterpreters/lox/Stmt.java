@@ -134,8 +134,9 @@ static class While extends Stmt {
 }
 static class Class extends Stmt {
     Class(
-      Token name,  List<Stmt.Function> methods) {
+      Token name,  Expr.Variable superclass,  List<Stmt.Function> methods) {
         this.name = name;
+        this.superclass = superclass;
         this.methods = methods;
     }
 
@@ -144,6 +145,7 @@ static class Class extends Stmt {
         return visitor.visitClassStmt(this);
     }
    final Token name;
+   final  Expr.Variable superclass;
    final  List<Stmt.Function> methods;
 
 }

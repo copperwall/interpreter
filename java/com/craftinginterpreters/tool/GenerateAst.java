@@ -31,7 +31,8 @@ public class GenerateAst {
                 "Variable : Token name",
                 "Get      : Expr object, Token name",
                 "Set      : Expr object, Token name, Expr value",
-                "This     : Token keyword"
+                "This     : Token keyword",
+                "Super    : Token keyword, Token method"
             )
         );
 
@@ -48,7 +49,7 @@ public class GenerateAst {
                 // Initializer is optional, null if DNE
                 "Var        : Token name, Expr initializer",
                 "While      : Expr condition, Stmt body",
-                "Class      : Token name, List<Stmt.Function> methods"
+                "Class      : Token name, Expr.Variable superclass, List<Stmt.Function> methods"
             )
         );
     }

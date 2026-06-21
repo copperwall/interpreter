@@ -1,12 +1,5 @@
 package com.craftinginterpreters.lox;
 
-import com.craftinginterpreters.lox.Expr.Binary;
-import com.craftinginterpreters.lox.Expr.Call;
-import com.craftinginterpreters.lox.Expr.Comma;
-import com.craftinginterpreters.lox.Expr.Grouping;
-import com.craftinginterpreters.lox.Expr.Literal;
-import com.craftinginterpreters.lox.Expr.Logical;
-import com.craftinginterpreters.lox.Expr.Unary;
 import com.craftinginterpreters.lox.Stmt.Class;
 import java.util.HashMap;
 import java.util.List;
@@ -228,11 +221,48 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Void visitSuperExpr(Expr.Super expr) {
+        if (currentClass == ClassType.NONE) {
+            Lox.error(
+                expr.keyword.line,
+                "Invalid use of 'super': must be in within a class"
+            );
+        } else if (currentClass != ClassType.SUBCLASS) {
+            Lox.error(
+                expr.keyword.line,
+                "Invalid use of 'super': must be in a subclass"
+            );
+        }
+
+        resolveLocal(expr, expr.keyword);
+        return null;
+    }
+
+    @Override
     public Void visitClassStmt(Class stmt) {
         ClassType enclosingClass = currentClass;
         currentClass = ClassType.CLASS;
         declare(stmt.name);
         define(stmt.name);
+
+        if (
+            stmt.superclass != null &&
+            stmt.superclass.name.lexeme.equals(stmt.name.lexeme)
+        ) {
+            Lox.error(
+                stmt.superclass.name.line,
+                "A class cannot extend itself."
+            );
+        }
+
+        // If we have a superclass, create a new scope for all methods in the class
+        // to access its superclass statically (not based on 'this', which is dynamic).
+        if (stmt.superclass != null) {
+            currentClass = ClassType.SUBCLASS;
+            resolve(stmt.superclass);
+            beginScope();
+            scopes.peek().put("super", new ResolveEntry(true, null));
+        }
 
         beginScope();
         scopes
@@ -253,6 +283,10 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
         }
 
         endScope();
+
+        if (stmt.superclass != null) {
+            endScope();
+        }
 
         currentClass = enclosingClass;
         return null;
@@ -364,5 +398,6 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     private enum ClassType {
         NONE,
         CLASS,
+        SUBCLASS,
     }
 }

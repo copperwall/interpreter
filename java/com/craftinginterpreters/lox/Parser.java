@@ -34,6 +34,7 @@ import static com.craftinginterpreters.lox.TokenType.SEMICOLON;
 import static com.craftinginterpreters.lox.TokenType.SLASH;
 import static com.craftinginterpreters.lox.TokenType.STAR;
 import static com.craftinginterpreters.lox.TokenType.STRING;
+import static com.craftinginterpreters.lox.TokenType.SUPER;
 import static com.craftinginterpreters.lox.TokenType.THIS;
 import static com.craftinginterpreters.lox.TokenType.TRUE;
 import static com.craftinginterpreters.lox.TokenType.VAR;
@@ -76,9 +77,21 @@ class Parser {
         }
     }
 
-    // class { method() { } method() { }}
+    // class name (< superclass)? { method() { } method() { }}
     private Stmt classDeclaration() {
         Token name = consume(IDENTIFIER, "Expected identifier after 'class'");
+        Expr.Variable superclass = null;
+
+        if (match(LESS)) {
+            // consume identifier
+            Token superIdent = consume(
+                IDENTIFIER,
+                "Expected superclass after '<' in class def."
+            );
+
+            superclass = new Expr.Variable(superIdent);
+        }
+
         consume(LEFT_BRACE, "Expected '{' after 'class <name>'.");
 
         List<Stmt.Function> methods = new ArrayList<>();
@@ -87,7 +100,7 @@ class Parser {
         }
 
         consume(RIGHT_BRACE, "Expected '}' after class body.");
-        return new Stmt.Class(name, methods);
+        return new Stmt.Class(name, superclass, methods);
     }
 
     private Stmt varDeclaration() {
@@ -469,6 +482,17 @@ class Parser {
         if (match(FALSE)) return new Expr.Literal(false);
         if (match(TRUE)) return new Expr.Literal(true);
         if (match(NIL)) return new Expr.Literal(null);
+
+        if (match(SUPER)) {
+            Token keyword = previous();
+            consume(DOT, "Expected '.' after super");
+
+            Token method = consume(
+                IDENTIFIER,
+                "Expected method name access on super"
+            );
+            return new Expr.Super(keyword, method);
+        }
 
         if (match(THIS)) return new Expr.This(previous());
 

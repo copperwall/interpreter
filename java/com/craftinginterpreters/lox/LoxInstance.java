@@ -18,8 +18,11 @@ class LoxInstance {
             return fields.get(name.lexeme);
         }
 
+        // Accessing a method on an instance binds "this"
+        // to the method. That method can be passed around with
+        // the same "this" at time of access, not at the time of calling.
         LoxFunction method = klass.findMethod(name.lexeme);
-        if (method != null) return method;
+        if (method != null) return method.bind(this);
 
         throw new RuntimeError(
             name,

@@ -105,6 +105,11 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     }
 
     @Override
+    public String visitThisExpr(Expr.This expr) {
+        return "this";
+    }
+
+    @Override
     public String visitClassStmt(Stmt.Class stmt) {
         StringBuilder builder = new StringBuilder();
         builder.append("(class ").append(stmt.name.lexeme).append(" {");

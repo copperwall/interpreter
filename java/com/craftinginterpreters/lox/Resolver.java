@@ -31,6 +31,7 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     private final Interpreter interpreter;
     private final Stack<Map<String, ResolveEntry>> scopes = new Stack<>();
     private FunctionType currentFunction = FunctionType.NONE;
+    private ClassType currentClass = ClassType.NONE;
 
     Resolver(Interpreter interpreter) {
         this.interpreter = interpreter;
@@ -106,6 +107,20 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     }
 
     @Override
+    public Void visitThisExpr(Expr.This expr) {
+        if (currentClass == ClassType.NONE) {
+            Lox.error(
+                expr.keyword.line,
+                "Cannot use 'this' outside of a class"
+            );
+            return null;
+        }
+
+        resolveLocal(expr, expr.keyword);
+        return null;
+    }
+
+    @Override
     public Void visitFunctionStmt(Stmt.Function stmt) {
         declare(stmt.name);
         define(stmt.name);
@@ -143,7 +158,14 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
         if (currentFunction == FunctionType.NONE) {
             Lox.error(stmt.keyword.line, "Cannot return outside of function.");
         }
+
         if (stmt.value != null) {
+            if (currentFunction == FunctionType.INITIALIZER) {
+                Lox.error(
+                    stmt.keyword.line,
+                    "Cannot return a value for an 'init' method"
+                );
+            }
             resolve(stmt.value);
         }
         return null;
@@ -207,14 +229,32 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
     @Override
     public Void visitClassStmt(Class stmt) {
+        ClassType enclosingClass = currentClass;
+        currentClass = ClassType.CLASS;
         declare(stmt.name);
         define(stmt.name);
 
+        beginScope();
+        scopes
+            .peek()
+            .put(
+                "this",
+                new ResolveEntry(
+                    true,
+                    new Token(TokenType.THIS, "this", null, -1)
+                )
+            );
+
         for (Stmt.Function method : stmt.methods) {
-            FunctionType declaration = FunctionType.METHOD;
+            FunctionType declaration = method.name.lexeme.equals("init")
+                ? FunctionType.INITIALIZER
+                : FunctionType.METHOD;
             resolveFunction(method, declaration);
         }
 
+        endScope();
+
+        currentClass = enclosingClass;
         return null;
     }
 
@@ -266,6 +306,8 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
         for (Map.Entry<String, ResolveEntry> entry : scope.entrySet()) {
             ResolveEntry resolveEntry = entry.getValue();
+            // "this" can be unused
+            if (resolveEntry.token.type == TokenType.THIS) continue;
             if (!resolveEntry.beenRead) {
                 Lox.error(
                     resolveEntry.token.line,
@@ -316,5 +358,11 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
         NONE,
         FUNCTION,
         METHOD,
+        INITIALIZER,
+    }
+
+    private enum ClassType {
+        NONE,
+        CLASS,
     }
 }

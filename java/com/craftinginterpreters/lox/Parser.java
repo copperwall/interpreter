@@ -3,13 +3,16 @@ package com.craftinginterpreters.lox;
 import static com.craftinginterpreters.lox.TokenType.AND;
 import static com.craftinginterpreters.lox.TokenType.BANG;
 import static com.craftinginterpreters.lox.TokenType.BANG_EQUAL;
+import static com.craftinginterpreters.lox.TokenType.CLASS;
 import static com.craftinginterpreters.lox.TokenType.COMMA;
+import static com.craftinginterpreters.lox.TokenType.DOT;
 import static com.craftinginterpreters.lox.TokenType.ELSE;
 import static com.craftinginterpreters.lox.TokenType.EOF;
 import static com.craftinginterpreters.lox.TokenType.EQUAL;
 import static com.craftinginterpreters.lox.TokenType.EQUAL_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.FALSE;
 import static com.craftinginterpreters.lox.TokenType.FOR;
+import static com.craftinginterpreters.lox.TokenType.FUN;
 import static com.craftinginterpreters.lox.TokenType.GREATER;
 import static com.craftinginterpreters.lox.TokenType.GREATER_EQUAL;
 import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
@@ -24,6 +27,7 @@ import static com.craftinginterpreters.lox.TokenType.NUMBER;
 import static com.craftinginterpreters.lox.TokenType.OR;
 import static com.craftinginterpreters.lox.TokenType.PLUS;
 import static com.craftinginterpreters.lox.TokenType.PRINT;
+import static com.craftinginterpreters.lox.TokenType.RETURN;
 import static com.craftinginterpreters.lox.TokenType.RIGHT_BRACE;
 import static com.craftinginterpreters.lox.TokenType.RIGHT_PAREN;
 import static com.craftinginterpreters.lox.TokenType.SEMICOLON;
@@ -62,11 +66,27 @@ class Parser {
     private Stmt declaration() {
         try {
             if (match(VAR)) return varDeclaration();
+            if (match(FUN)) return function("function");
+            if (match(CLASS)) return classDeclaration();
             return statement();
         } catch (ParseError error) {
             synchronize();
             return null;
         }
+    }
+
+    // class { method() { } method() { }}
+    private Stmt classDeclaration() {
+        Token name = consume(IDENTIFIER, "Expected identifier after 'class'");
+        consume(LEFT_BRACE, "Expected '{' after 'class <name>'.");
+
+        List<Stmt.Function> methods = new ArrayList<>();
+        while (!check(RIGHT_BRACE) && !isAtEnd()) {
+            methods.add(function("method"));
+        }
+
+        consume(RIGHT_BRACE, "Expected '}' after class body.");
+        return new Stmt.Class(name, methods);
     }
 
     private Stmt varDeclaration() {
@@ -86,9 +106,45 @@ class Parser {
         return new Stmt.Var(name, initializer);
     }
 
+    private Stmt.Function function(String kind) {
+        // Get identifier
+        Token name = consume(IDENTIFIER, "Expected identifier for function");
+
+        consume(LEFT_PAREN, "Expected left paren after " + kind + " name");
+        List<Token> params = new ArrayList<>();
+
+        while (!check(RIGHT_PAREN)) {
+            do {
+                // Can't add more than 255 parameters
+                if (params.size() >= 255) {
+                    error(peek(), "Can't have more than 255 parameters.");
+                }
+
+                params.add(consume(IDENTIFIER, "Expected paramater name"));
+            } while (match(COMMA));
+        }
+
+        consume(
+            RIGHT_PAREN,
+            "Expected right paren after " + kind + " arguments"
+        );
+
+        consume(LEFT_BRACE, "Expected '{' after " + kind + " arguments");
+        List<Stmt> body = block();
+
+        // block() consumes the closing right brace.
+
+        return new Stmt.Function(name, params, body);
+    }
+
     private Stmt statement() {
         if (match(PRINT)) {
             return printStatement();
+        }
+
+        if (match(RETURN)) {
+            Token token = previous();
+            return returnStatement(token);
         }
 
         if (match(IF)) {
@@ -109,6 +165,16 @@ class Parser {
         }
 
         return expressionStatement();
+    }
+
+    private Stmt returnStatement(Token keyword) {
+        Expr expression = null;
+        if (!check(SEMICOLON)) {
+            expression = comma();
+        }
+
+        consume(SEMICOLON, "Expected semicolon after return statement");
+        return new Stmt.Return(keyword, expression);
     }
 
     private Stmt forStatement() {
@@ -252,6 +318,10 @@ class Parser {
                 Token name = ((Expr.Variable) expr).name;
 
                 return new Expr.Assign(name, value);
+            } else if (expr instanceof Expr.Get) {
+                Expr.Get get = (Expr.Get) expr;
+
+                return new Expr.Set(get.object, get.name, value);
             }
 
             error(equals, "Invalid assignment type");
@@ -348,7 +418,50 @@ class Parser {
             return new Expr.Unary(operator, right);
         }
 
-        return primary();
+        return call();
+    }
+
+    private Expr call() {
+        Expr expr = primary();
+
+        while (true) {
+            if (match(LEFT_PAREN)) {
+                expr = finishCall(expr);
+            } else if (match(DOT)) {
+                // thing.prop
+                Token name = consume(
+                    IDENTIFIER,
+                    "Expected identifer after '.'"
+                );
+
+                expr = new Expr.Get(expr, name);
+            } else {
+                break;
+            }
+        }
+
+        return expr;
+    }
+
+    private Expr finishCall(Expr callee) {
+        // Already consumed the last paren
+        List<Expr> arguments = new ArrayList<>();
+
+        if (!check(RIGHT_PAREN)) {
+            do {
+                if (arguments.size() >= 255) {
+                    error(peek(), "Can't have more than 255 arguments");
+                }
+                arguments.add(expression());
+            } while (match(COMMA));
+        }
+
+        Token paren = consume(
+            RIGHT_PAREN,
+            "Expected ')' after function argument list"
+        );
+
+        return new Expr.Call(callee, paren, arguments);
     }
 
     private Expr primary() {

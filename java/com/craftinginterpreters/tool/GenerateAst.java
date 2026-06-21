@@ -15,6 +15,7 @@ public class GenerateAst {
 
         String outputDir = args[0];
 
+        // TODO: Add anonymous function expression syntax.
         defineAst(
             outputDir,
             "Expr",
@@ -26,7 +27,10 @@ public class GenerateAst {
                 "Literal  : Object value",
                 "Logical  : Expr left, Token operator, Expr right",
                 "Unary    : Token operator, Expr right",
-                "Variable : Token name"
+                "Call     : Expr callee, Token paren, List<Expr> arguments",
+                "Variable : Token name",
+                "Get      : Expr object, Token name",
+                "Set      : Expr object, Token name, Expr value"
             )
         );
 
@@ -37,10 +41,13 @@ public class GenerateAst {
                 "Block      : List<Stmt> statments",
                 "Expression : Expr expression",
                 "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",
+                "Function   : Token name, List<Token> params, List<Stmt> body",
+                "Return     : Token keyword, Expr value",
                 "Print      : Expr expression",
                 // Initializer is optional, null if DNE
                 "Var        : Token name, Expr initializer",
-                "While      : Expr condition, Stmt body"
+                "While      : Expr condition, Stmt body",
+                "Class      : Token name, List<Stmt.Function> methods"
             )
         );
     }

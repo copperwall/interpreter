@@ -51,6 +51,19 @@ class Environment {
         );
     }
 
+    Object getAt(Integer distance, String name) {
+        return ancestor(distance).values.get(name);
+    }
+
+    Environment ancestor(Integer distance) {
+        Environment env = this;
+        for (int i = 0; i < distance; i++) {
+            env = env.enclosing;
+        }
+
+        return env;
+    }
+
     void assign(Token name, Object value) {
         if (values.containsKey(name.lexeme)) {
             values.put(name.lexeme, value);
@@ -66,5 +79,17 @@ class Environment {
             name,
             "Undefined variable '" + name.lexeme + "'."
         );
+    }
+
+    void assignAt(Integer distance, Token name, Object value) {
+        ancestor(distance).values.put(name.lexeme, value);
+    }
+
+    void debug() {
+        System.out.println(values);
+        if (enclosing != null) {
+            System.out.println("Parent");
+            enclosing.debug();
+        }
     }
 }

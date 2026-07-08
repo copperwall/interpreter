@@ -59,10 +59,9 @@ static class If extends Stmt {
 }
 static class Function extends Stmt {
     Function(
-      Token name,  List<Token> params,  List<Stmt> body) {
+      Token name,  Expr.Function function) {
         this.name = name;
-        this.params = params;
-        this.body = body;
+        this.function = function;
     }
 
     @Override
@@ -70,8 +69,7 @@ static class Function extends Stmt {
         return visitor.visitFunctionStmt(this);
     }
    final Token name;
-   final  List<Token> params;
-   final  List<Stmt> body;
+   final  Expr.Function function;
 
 }
 static class Return extends Stmt {

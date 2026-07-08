@@ -1,8 +1,5 @@
 package com.craftinginterpreters.lox;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
@@ -266,5 +263,33 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
         );
 
         System.out.println(new AstPrinter().print(expression));
+    }
+
+    @Override
+    public String visitFunctionExpr(Expr.Function expr) {
+        StringBuilder builder = new StringBuilder();
+        builder
+            .append("(")
+            .append("fn ")
+            .append("(")
+            .append(
+                String.join(
+                    ", ",
+                    expr.params
+                        .stream()
+                        .map(t -> t.lexeme)
+                        .collect(Collectors.toList())
+                )
+            )
+            .append(") {");
+
+        for (Stmt body : expr.body) {
+            builder.append(body.accept(this));
+        }
+        builder.append("}");
+
+        builder.append(")");
+
+        return builder.toString();
     }
 }

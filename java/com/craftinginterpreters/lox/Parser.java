@@ -120,10 +120,8 @@ class Parser {
         return new Stmt.Var(name, initializer);
     }
 
-    private Stmt.Function function(String kind) {
-        // Get identifier
-        Token name = consume(IDENTIFIER, "Expected identifier for function");
-
+    private Expr.Function parseFunctionExpr(String kind) {
+        Token keyword = previous();
         consume(LEFT_PAREN, "Expected left paren after " + kind + " name");
         List<Token> params = new ArrayList<>();
 
@@ -146,9 +144,19 @@ class Parser {
         consume(LEFT_BRACE, "Expected '{' after " + kind + " arguments");
         List<Stmt> body = block();
 
-        // block() consumes the closing right brace.
+        return new Expr.Function(keyword, params, body);
+    }
 
-        return new Stmt.Function(name, params, body);
+    private Stmt.Function function(String kind) {
+        // Get identifier
+        Token name = consume(
+            IDENTIFIER,
+            "Expected identifier for function declaration"
+        );
+
+        Expr.Function func = parseFunctionExpr(kind);
+
+        return new Stmt.Function(name, func.params, func.body);
     }
 
     private Stmt statement() {
@@ -482,6 +490,11 @@ class Parser {
         if (match(FALSE)) return new Expr.Literal(false);
         if (match(TRUE)) return new Expr.Literal(true);
         if (match(NIL)) return new Expr.Literal(null);
+
+        // Parse out function literal expression.
+        if (match(FUN)) {
+            return parseFunctionExpr("function");
+        }
 
         if (match(SUPER)) {
             Token keyword = previous();

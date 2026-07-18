@@ -10,70 +10,70 @@
 #define DEBUG_TRACE_EXECUTION
 
 static void repl() {
-    char line[1024];
-    for (;;) {
-        printf("> ");
+  char line[1024];
+  for (;;) {
+    printf("> ");
 
-        if (fgets(line, sizeof(line), stdin)) {
-            printf("\n");
-            break;
-        }
-
-        interpret(line);
+    if (!fgets(line, sizeof(line), stdin)) {
+      printf("\n");
+      printf("Breaking\n");
+      break;
     }
 
-
+    interpret(line);
+  }
 }
 
-static char* readFile(const char* filename) {
-    FILE* file = fopen("filename", "rb");
+static char *readFile(const char *filename) {
+  FILE *file = fopen(filename, "rb");
 
-    if (file == NULL) {
-        fprintf(stderr, "Could not open file \"%s\".\n", filename);
-        exit(74);
-    }
+  if (file == NULL) {
+    fprintf(stderr, "Could not open file \"%s\".\n", filename);
+    exit(74);
+  }
 
-    fseek(file, 0L, SEEK_END);
-    size_t fileSize = ftell(file);
+  fseek(file, 0L, SEEK_END);
+  size_t fileSize = ftell(file);
 
-    rewind(file);
+  rewind(file);
 
-    // Plus one for the null byte.
-    char* sourceBuf = (char *)malloc(fileSize + 1);
+  // Plus one for the null byte.
+  char *sourceBuf = (char *)malloc(fileSize + 1);
 
-    if (sourceBuf == NULL) {
-        fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
-        exit(74);
-    }
+  if (sourceBuf == NULL) {
+    fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
+    exit(74);
+  }
 
-    size_t bytesRead = fread(sourceBuf, sizeof(char), fileSize, file);
-    sourceBuf[bytesRead] = '\0';
+  size_t bytesRead = fread(sourceBuf, sizeof(char), fileSize, file);
+  sourceBuf[bytesRead] = '\0';
 
-    fclose(file);
-    return sourceBuf;
+  fclose(file);
+  return sourceBuf;
 }
 
-static void runFile(const char* filename) {
-    char* source = readFile(filename);
+static void runFile(const char *filename) {
+  char *source = readFile(filename);
 
-    InterpretResult result = interpret(source);
-    free(source);
+  InterpretResult result = interpret(source);
+  free(source);
 
-    if (result == INTERPRET_COMPILE_ERROR) exit(65);
-    if (result == INTERPRET_RUNTIME_ERROR) exit(70);
+  if (result == INTERPRET_COMPILE_ERROR)
+    exit(65);
+  if (result == INTERPRET_RUNTIME_ERROR)
+    exit(70);
 }
-
 
 int main(int argc, const char *argv[]) {
   initVM();
 
   if (argc == 1) {
-      repl();
+    repl();
   } else if (argc == 2) {
-      runFile(argv[1]);
+    runFile(argv[1]);
   } else {
-      fprintf(stderr, "Usage: clox [path]\n");
-      exit(64);
+    fprintf(stderr, "Usage: clox [path]\n");
+    exit(64);
   }
 
   freeVM();

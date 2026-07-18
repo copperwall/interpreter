@@ -3,6 +3,11 @@
 
 #include "common.h"
 
+// NULL pointer says to create new memory, eventually gets
+// passed to realloc
+#define ALLOCATE(type, count) \
+    (type*)reallocate(NULL, 0, sizeof(type) * (count))
+
 #define GROW_CAPACITY(capacity) \
     ((capacity) < 8  ? 8 : (capacity) * 2)
 

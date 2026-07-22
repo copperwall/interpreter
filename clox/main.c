@@ -16,7 +16,6 @@ static void repl() {
 
     if (!fgets(line, sizeof(line), stdin)) {
       printf("\n");
-      printf("Breaking\n");
       break;
     }
 

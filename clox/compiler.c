@@ -62,7 +62,6 @@ static void errorAt(Token *token, const char *message) {
   }
 
   fprintf(stderr, ": %s\n", message);
-  printf("Hello?\n");
   parser.hadError = true;
 }
 

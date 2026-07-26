@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "memory.h"
 #include "object.h"
+#include "table.h"
 #include "value.h"
 #include "value.h"
 #include <stdarg.h>
@@ -165,9 +166,16 @@ static InterpretResult run() {
 #undef READ_BYTE
 }
 
-void initVM() { resetStack(); vm.objects = NULL; }
+void initVM() {
+  resetStack();
+  vm.objects = NULL;
+  initTable(&vm.strings);
+}
 
-void freeVM() { freeObjects(); }
+void freeVM() {
+  freeObjects();
+  freeTable(&vm.strings);
+}
 
 void push(Value value) {
   // check stack size

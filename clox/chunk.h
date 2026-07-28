@@ -8,6 +8,7 @@
 typedef enum {
   OP_CONSTANT,
   OP_RETURN,
+  OP_PRINT,
   OP_NEGATE,
   OP_ADD,
   OP_SUBTRACT,
@@ -16,10 +17,14 @@ typedef enum {
   OP_NIL,
   OP_TRUE,
   OP_FALSE,
+  OP_POP,
   OP_NOT,
   OP_EQUAL,
   OP_GREATER,
   OP_LESS,
+  OP_DEFINE_GLOBAL,
+  OP_GET_GLOBAL,
+  OP_SET_GLOBAL,
 } OpCode;
 
 // Kind of like a slice

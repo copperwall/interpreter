@@ -75,6 +75,7 @@ static void concatenate() {
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 
 // B and A are undefined
 #define BINARY_OP(valueType, op) \
@@ -102,9 +103,14 @@ static InterpretResult run() {
     uint8_t instruction;
     switch (instruction = READ_BYTE()) {
     case OP_RETURN: {
-        printValue(pop());
-        printf("\n");
       return INTERPRET_OK;
+    }
+    case OP_PRINT: {
+      // Pop off statement and print value
+      Value val = pop();
+      printValue(val);
+      printf("\n");
+      break;
     }
     case OP_CONSTANT: {
       Value constant = READ_CONSTANT();
@@ -154,6 +160,49 @@ static InterpretResult run() {
     }
     case OP_LESS: BINARY_OP(BOOL_VAL, <); break;
     case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
+    case OP_DEFINE_GLOBAL: {
+      ObjString* name = READ_STRING();
+      tableSet(&vm.globals, name, peek(0));
+      pop();
+      // Value v;
+      // tableGet(&vm.globals, name, &v);
+
+      // printf("Printing value: ");
+      // printValue(v);
+      // printf("\n");
+      break;
+    }
+    case OP_GET_GLOBAL: {
+      ObjString* name = READ_STRING();
+      Value value;
+      if (!tableGet(&vm.globals, name, &value)) {
+        runtimeError("Undefined variable '%s'.", name->chars);
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      push(value);
+
+      break;
+    }
+    case OP_SET_GLOBAL: {
+      // Read string does the following
+      // 1. Reads the value pointed to by the vm.ip pointer (the index in the constants table)
+      // 2. Uses that number to index into the current chunk's constants array's values
+      // 3. Grabs the obj part of the union type and cast to ObjString
+      ObjString* name = READ_STRING();
+      if (tableSet(&vm.globals, name, peek(0))) {
+        tableDelete(&vm.globals, name);
+        runtimeError("Undefined variable '%s'", name->chars);
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      break;
+    }
+    case OP_POP: {
+      // Pop value off the stack
+      pop();
+      break;
+    }
     default: {
         printf("Unknown instruction: ");
         exit(1);
@@ -169,11 +218,13 @@ static InterpretResult run() {
 void initVM() {
   resetStack();
   vm.objects = NULL;
+  initTable(&vm.globals);
   initTable(&vm.strings);
 }
 
 void freeVM() {
   freeObjects();
+  freeTable(&vm.globals);
   freeTable(&vm.strings);
 }
 

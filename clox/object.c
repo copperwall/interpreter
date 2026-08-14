@@ -34,9 +34,7 @@ static ObjString* allocateString(char* chars, int length, uint32_t hash) {
   string->chars = chars;
   string->hash = hash;
 
-  printf("Begin table set %s\n", string->chars);
   tableSet(&vm.strings, string, NIL_VAL);
-  printf("End table set\n");
   return string;
 }
 

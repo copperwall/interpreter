@@ -5,6 +5,7 @@
 #include "scanner.h"
 #include "object.h"
 #include "value.h"
+#include <string.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,16 @@ typedef struct {
   Precedence precedence;
 } ParseRule;
 
+typedef struct {
+  Token name;
+  int depth;
+} Local;
+
+typedef struct {
+  Local locals[UINT8_COUNT];
+  int localCount;
+  int scopeDepth;
+} Compiler;
 
 typedef struct {
   Token current;
@@ -41,10 +52,17 @@ typedef struct {
 } Parser;
 
 Parser parser;
+Compiler* current = NULL;
 Chunk* compilingChunk;
 
 static Chunk* currentChunk() {
   return compilingChunk;
+}
+
+static void initCompiler(Compiler* compiler) {
+  compiler->localCount = 0;
+  compiler->scopeDepth = 0;
+  current = compiler;
 }
 
 // "[line <line>] Error at <token>: <message>"
@@ -175,6 +193,20 @@ static bool match(TokenType type) {
   return true;
 }
 
+static void beginScope() {
+    current->scopeDepth++;
+}
+
+static void endScope() {
+  current->scopeDepth--;
+
+  // pop all local vars from this scope off the stack
+  while (current->localCount > 0 && current->locals[current->localCount--].depth > current->scopeDepth) {
+    emitByte(OP_POP);
+    current->localCount--;
+  }
+}
+
 static uint8_t makeConstant(Value value) {
   // Add to chunk's constant list
   Chunk* chunk = currentChunk();
@@ -286,14 +318,83 @@ static uint8_t identifierConstant(Token* name) {
   return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
+static bool identifiersEqual(Token* a, Token* b) {
+  // compare length first
+  if (a->length != b->length) return false;
+
+  return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static void addLocal(Token name) {
+  if (current->localCount >= UINT8_COUNT) {
+    error("Too many local variables in function.");
+    return;
+  }
+
+  Local* local = &current->locals[current->localCount++];
+  local->name = name;
+  local->depth = -1;
+}
+
+static void declareVariable() {
+  if (current->scopeDepth == 0) return;
+  Token* name = &parser.previous;
+
+
+  // Check for existing variables with this name in the current scope by moving backwards
+  // in current->locals until one is found or we end up in a higher scope.
+  for (int i = current->localCount - 1; i >= 0; i--) {
+    Local* local = &current->locals[i];
+    // break condition ()
+    if (local->depth != -1 && local->depth < current->scopeDepth) {
+      break;
+    }
+
+    // found condition
+    if (identifiersEqual(&local->name, name)) {
+      error("Already a variable with this name in the current scope.");
+    }
+  }
+
+  addLocal(*name);
+}
+
+static int resolveLocal(Compiler* current, Token* name) {
+  // All locals in current are in scope, so go in reverse until we find the name that matches
+  // and return the index.
+  for (int i = current->localCount - 1; i >= 0; i--) {
+    Local* local = &current->locals[i];
+    // Book assigns to Local* local here but maybe we can just reference directly.
+    if (identifiersEqual(&local->name, name)) {
+      if (local->depth == -1) {
+        error("Can't read local variable in its own initializer");
+      }
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 static void namedVariable(Token name, bool canAssign) {
-  uint8_t arg = identifierConstant(&name);
+  uint8_t getOp, setOp;
+  int arg = resolveLocal(current, &name);
+
+  // -1 is global and should be replaced by the name, not the index
+  if (arg != -1) {
+    getOp = OP_GET_LOCAL;
+    setOp = OP_SET_LOCAL;
+  } else {
+    arg = identifierConstant(&name);
+    getOp = OP_GET_GLOBAL;
+    setOp = OP_SET_GLOBAL;
+  }
 
   if (canAssign && match(TOKEN_EQUAL)) {
     expression();
-    emitBytes(OP_SET_GLOBAL, arg);
+    emitBytes(setOp, (uint8_t)arg);
   } else {
-    emitBytes(OP_GET_GLOBAL, arg);
+    emitBytes(getOp, (uint8_t)arg);
   }
 
 }
@@ -376,9 +477,7 @@ static void expression() {
 static void printStatement() {
     // Matched print token already
     // compile expression
-    printf("Before expressoin\n");
     expression();
-    printf("after expressoin\n");
     consume(TOKEN_SEMICOLON, "Expected semicolon after print statement.");
 
     emitByte(OP_PRINT);
@@ -410,10 +509,26 @@ static void synchronize() {
 
 static uint8_t parseVariable(const char* errorMsg) {
   consume(TOKEN_IDENTIFIER, errorMsg);
+
+  declareVariable();
+  // Local variables identifiers aren't stored on the stack.
+  if (current->scopeDepth > 0) {
+    return 0;
+  }
+
   return identifierConstant(&parser.previous);
 }
 
+static void markInitialized() {
+  current->locals[current->localCount-1].depth = current->scopeDepth;
+}
+
 static void defineVariable(uint8_t global) {
+  if (current->scopeDepth > 0) {
+    markInitialized();
+    return;
+  }
+
   emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
@@ -446,9 +561,21 @@ static void expressionStatement() {
   emitByte(OP_POP);
 }
 
+static void block() {
+  while (!check(TOKEN_RIGHT_BRACE)) {
+    declaration();
+  }
+
+  consume(TOKEN_RIGHT_BRACE, "Expected '}' after block");
+}
+
 static void statement() {
   if (match(TOKEN_PRINT)) {
     printStatement();
+  } else if (match(TOKEN_LEFT_BRACE)) {
+    beginScope();
+    block();
+    endScope();
   } else {
     expressionStatement();
   }
@@ -460,6 +587,8 @@ static void declartion() {
 
 bool compile(const char *source, Chunk *chunk) {
   initScanner(source);
+  Compiler compiler;
+  initCompiler(&compiler);
 
   parser.hadError = false;
   parser.panicMode = false;

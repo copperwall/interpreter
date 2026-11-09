@@ -570,7 +570,7 @@ static void emitLoop(int loopStart) {
         error("Loop body too large.");
     }
 
-    emitByte((offset > 8) & 0xff);
+    emitByte((offset >> 8) & 0xff);
     emitByte(offset & 0xff);
 }
 

@@ -201,18 +201,12 @@ printf("\nBegin execution\n");
     case OP_GET_LOCAL: {
       // Read slot value from next byte
       uint8_t slot = READ_BYTE();
-      printf(
-        "Reading local variable from %d\n", slot
-      );
       push(vm.stack[slot]);
       break;
     }
     case OP_SET_LOCAL: {
       // Read slot value from next byte
       uint8_t slot = READ_BYTE();
-      printf(
-        "Writing local variable from %d\n", slot
-      );
       vm.stack[slot] = peek(0);
       break;
     }

@@ -5,6 +5,7 @@
 #include "scanner.h"
 #include "object.h"
 #include "value.h"
+#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -586,14 +587,6 @@ static void whileStatement() {
    emitByte(OP_POP);
 
    statement();
-   // loopStart = 10
-   // point is now 20
-   // emit op_loop 21
-   // operands 23
-   // current 21
-   // offset = current - loopStart + 2 (+ 2 is because the VM will have read the offset which is two bytes)
-   // goal is that VM can decrement ip by a certain amount
-   // OP_LOOP <16bit offset (negative offset)>
    emitLoop(loopStart);
 
    patchJump(exitJump);
@@ -678,6 +671,93 @@ static void expressionStatement() {
   emitByte(OP_POP);
 }
 
+/*
+ * Instruction layout
+ *
+ * <expression bytecode> for optional initializer expression
+ * loopStart
+ * <condition bytecode>
+ * JUMP_IF_FALSE <exit offset>
+ * OP_POP (conditional no longer needed)
+ * <loop body>
+ * <increment bytecode> for optional initializer expression
+ * OP_LOOP back to loopStart
+ * OP_POP @ exit offset
+ *
+ */
+static void forStatement() {
+    beginScope();
+    consume(TOKEN_LEFT_PAREN, "Expected '(' after 'while'");
+    // initializer
+    // Check if semicolon, otherwise parse a definition? But it could also be a statement
+
+    if (match(TOKEN_SEMICOLON)) {
+        // No intiailizer
+    } else if (match(TOKEN_VAR)) {
+        varDeclaration();
+    } else {
+        expressionStatement();
+    }
+
+    int loopStart = currentChunk()->count;
+    int possibleExitJump = -1;
+
+    if (!match(TOKEN_SEMICOLON)) {
+        // condition, place in bytecode
+        expression();
+        consume(TOKEN_SEMICOLON, "Expected ';' after conditional");
+
+        possibleExitJump = emitJump(OP_JUMP_IF_FALSE);
+        emitByte(OP_POP);
+    }
+
+
+    int hasIncrement = false;
+    int preIncrementJump = -1;
+    int incrementStart = -1;
+    // optional increment expression
+    if (!match(TOKEN_RIGHT_PAREN)) {
+        hasIncrement = true;
+        // Awkward because it shows up before the body but runs after it.
+        // Handling this via fun jump magic.
+
+        // start with an always jump to a later offset
+        // compile body
+        // end
+
+        // jump to body first
+        preIncrementJump = emitJump(OP_JUMP);
+        // compile increment expression
+        incrementStart = currentChunk()->count;
+        expression();
+        emitByte(OP_POP);
+        emitLoop(loopStart);
+        consume(TOKEN_RIGHT_PAREN, "Expected ')' after ';'");
+    }
+
+    // Tell preincrement jump to run to body first.
+    if (hasIncrement && preIncrementJump > -1) {
+        patchJump(preIncrementJump);
+    }
+    statement();
+
+    // If we have an increment statement, go back to it and let it
+    // loop back to start.
+    // Otherwise loop back after loop body.
+    if (hasIncrement && incrementStart > -1) {
+        emitLoop(incrementStart);
+    } else {
+        emitLoop(loopStart);
+    }
+
+    if (possibleExitJump != -1) {
+        patchJump(possibleExitJump);
+        // Pop the conditional value
+        emitByte(OP_POP);
+    }
+    endScope();
+}
+
 static void block() {
   while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
     declaration();
@@ -693,6 +773,8 @@ static void statement() {
     ifStatement();
   } else if (match(TOKEN_WHILE)) {
     whileStatement();
+  } else if (match(TOKEN_FOR)) {
+    forStatement();
   } else if (match(TOKEN_LEFT_BRACE)) {
     beginScope();
     block();

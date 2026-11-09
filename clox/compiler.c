@@ -712,12 +712,9 @@ static void forStatement() {
     }
 
 
-    int hasIncrement = false;
-    int preIncrementJump = -1;
-    int incrementStart = -1;
+    // If you just overwrite loopStart when there's an increment, it makes it simpler.
     // optional increment expression
     if (!match(TOKEN_RIGHT_PAREN)) {
-        hasIncrement = true;
         // Awkward because it shows up before the body but runs after it.
         // Handling this via fun jump magic.
 
@@ -726,29 +723,20 @@ static void forStatement() {
         // end
 
         // jump to body first
-        preIncrementJump = emitJump(OP_JUMP);
+        int bodyJump = emitJump(OP_JUMP);
         // compile increment expression
-        incrementStart = currentChunk()->count;
+        int incrementStart = currentChunk()->count;
         expression();
         emitByte(OP_POP);
+        consume(TOKEN_RIGHT_PAREN, "Expected ')' after clauses");
         emitLoop(loopStart);
-        consume(TOKEN_RIGHT_PAREN, "Expected ')' after ';'");
+
+        loopStart = incrementStart;
+        patchJump(bodyJump);
     }
 
-    // Tell preincrement jump to run to body first.
-    if (hasIncrement && preIncrementJump > -1) {
-        patchJump(preIncrementJump);
-    }
     statement();
-
-    // If we have an increment statement, go back to it and let it
-    // loop back to start.
-    // Otherwise loop back after loop body.
-    if (hasIncrement && incrementStart > -1) {
-        emitLoop(incrementStart);
-    } else {
-        emitLoop(loopStart);
-    }
+    emitLoop(loopStart);
 
     if (possibleExitJump != -1) {
         patchJump(possibleExitJump);

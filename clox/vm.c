@@ -77,6 +77,10 @@ static InterpretResult run() {
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
+#ifdef DEBUG_TRACE_EXECUTION
+printf("\nBegin execution\n");
+#endif
+
 // B and A are undefined
 #define BINARY_OP(valueType, op) \
     do { \

@@ -201,7 +201,7 @@ static void endScope() {
   current->scopeDepth--;
 
   // pop all local vars from this scope off the stack
-  while (current->localCount > 0 && current->locals[current->localCount--].depth > current->scopeDepth) {
+  while (current->localCount > 0 && current->locals[current->localCount-1].depth > current->scopeDepth) {
     emitByte(OP_POP);
     current->localCount--;
   }

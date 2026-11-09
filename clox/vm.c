@@ -74,6 +74,8 @@ static void concatenate() {
 
 static InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
+#define READ_SHORT() \
+    (vm.ip += 2, (uint16_t)((vm.ip[-2] << 8) | vm.ip[-1]))
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
@@ -218,6 +220,25 @@ printf("\nBegin execution\n");
       // Pop value off the stack
       pop();
       break;
+    }
+    case OP_JUMP: {
+        // Read two bytes and then increase the ip by that much
+        uint16_t offset = READ_SHORT();
+        vm.ip += offset;
+        break;
+    }
+    case OP_JUMP_IF_FALSE: {
+        // Read two bytes and then increase the ip by that much
+        uint16_t offset = READ_SHORT();
+
+        if (isFalsey(peek(0))) vm.ip += offset;
+
+        break;
+    }
+    case OP_LOOP: {
+        uint16_t offset = READ_SHORT();
+        vm.ip -= offset;
+        break;
     }
     default: {
         printf("Unknown instruction: ");

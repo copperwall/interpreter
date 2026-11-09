@@ -228,6 +228,32 @@ static void emitConstant(Value value) {
   emitBytes(OP_CONSTANT, makeConstant(value));
 }
 
+static int emitJump(OpCode opcode) {
+    emitByte(opcode);
+    emitByte(0xff);
+    emitByte(0xff);
+
+    // This returns the index of the first jump offset byte,
+    // since we'll need to patch that later (and not the opcode)
+    // -2 is because after emitting three bytes, the count is one ahead
+    // of the three bytes emitted.
+    return currentChunk()->count - 2;
+}
+
+static void patchJump(int offset) {
+    int jump = currentChunk()->count - offset - 2;
+
+    // if jump too big, error
+    if (jump > UINT16_MAX) {
+        error("Jump is too big");
+    }
+
+    // overwrite jump offset
+    // place most significant bytes first for VM to read in order.
+    currentChunk()->code[offset] = (jump >> 8) & 0xff;
+    currentChunk()->code[offset + 1] = jump & 0xff;
+}
+
 static void number(bool canAssign) {
   double value = strtod(parser.previous.start, NULL);
 #ifdef EXTREME_PARSER_TRACE
@@ -404,6 +430,34 @@ static void variable(bool canAssign) {
   namedVariable(parser.previous, canAssign);
 }
 
+// Evaluate left value, if false jump
+static void and_(bool canAssign) {
+    // we've already parsed the first expression and the and keyword
+
+    // jmp if not false
+    int endJump = emitJump(OP_JUMP_IF_FALSE);
+
+    emitByte(OP_POP);
+    parsePrecedence(PREC_AND);
+    patchJump(endJump);
+}
+
+static void or_(bool canAssign) {
+    // we've already parsed the first expression and the and keyword
+
+    // true || false, if the value is true jump to end
+    // if the value is false, discard the value and move on to the next value?
+
+    int elseJump = emitJump(OP_JUMP_IF_FALSE);
+    int endJump = emitJump(OP_JUMP);
+
+    patchJump(elseJump);
+    emitByte(OP_POP);
+
+    parsePrecedence(PREC_OR);
+    patchJump(endJump);
+}
+
 static void literal(bool canAssign) {
   switch (parser.previous.type) {
     case TOKEN_NIL: emitByte(OP_NIL); break;
@@ -445,7 +499,7 @@ ParseRule rules[] = {
   [TOKEN_IDENTIFIER]    = {variable,     NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,     NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
-  [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_AND]           = {NULL,     and_,   PREC_AND},
   [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
   [TOKEN_FALSE]         = {literal,     NULL,   PREC_NONE},
@@ -453,7 +507,7 @@ ParseRule rules[] = {
   [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_NIL]           = {literal,     NULL,   PREC_NONE},
-  [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_OR]            = {NULL,     or_,   PREC_OR},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
@@ -481,6 +535,69 @@ static void printStatement() {
     consume(TOKEN_SEMICOLON, "Expected semicolon after print statement.");
 
     emitByte(OP_PRINT);
+}
+
+static void ifStatement() {
+    // parsed if keyword, need to parse
+    // left paren
+    // condition expression
+    // right paren
+    // block/statement
+    consume(TOKEN_LEFT_PAREN, "Expected '(' after 'if'");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expected ')' after if predicate");
+
+    int thenJump = emitJump(OP_JUMP_IF_FALSE);
+    emitByte(OP_POP);
+    statement();
+
+    // Always jump for else cases if we're in the true case.
+    int elseJump = emitJump(OP_JUMP);
+
+    patchJump(thenJump);
+    emitByte(OP_POP);
+    if (match(TOKEN_ELSE)) statement();
+
+    patchJump(elseJump);
+}
+
+static void emitLoop(int loopStart) {
+    emitByte(OP_LOOP);
+
+    int offset = currentChunk()->count - loopStart + 2;
+
+    if (offset > UINT16_MAX) {
+        error("Loop body too large.");
+    }
+
+    emitByte((offset > 8) & 0xff);
+    emitByte(offset & 0xff);
+}
+
+static void whileStatement() {
+   int loopStart = currentChunk()->count;
+   consume(TOKEN_LEFT_PAREN, "Expected '(' after 'while'");
+
+   expression();
+
+   consume(TOKEN_RIGHT_PAREN, "Expected '(' after 'while'");
+
+   int exitJump = emitJump(OP_JUMP_IF_FALSE);
+   emitByte(OP_POP);
+
+   statement();
+   // loopStart = 10
+   // point is now 20
+   // emit op_loop 21
+   // operands 23
+   // current 21
+   // offset = current - loopStart + 2 (+ 2 is because the VM will have read the offset which is two bytes)
+   // goal is that VM can decrement ip by a certain amount
+   // OP_LOOP <16bit offset (negative offset)>
+   emitLoop(loopStart);
+
+   patchJump(exitJump);
+   emitByte(OP_POP);
 }
 
 static void synchronize() {
@@ -562,7 +679,7 @@ static void expressionStatement() {
 }
 
 static void block() {
-  while (!check(TOKEN_RIGHT_BRACE)) {
+  while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
     declaration();
   }
 
@@ -572,6 +689,10 @@ static void block() {
 static void statement() {
   if (match(TOKEN_PRINT)) {
     printStatement();
+  } else if (match(TOKEN_IF)) {
+    ifStatement();
+  } else if (match(TOKEN_WHILE)) {
+    whileStatement();
   } else if (match(TOKEN_LEFT_BRACE)) {
     beginScope();
     block();

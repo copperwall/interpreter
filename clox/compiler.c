@@ -45,7 +45,8 @@ typedef enum {
   TYPE_SCRIPT
 } FunctionType;
 
-typedef struct {
+typedef struct Compiler {
+  struct Compiler *enclosing;
   // The current function
   ObjFunction *function;
   FunctionType type;
@@ -68,10 +69,17 @@ Chunk *compilingChunk;
 static Chunk *currentChunk() { return &current->function->chunk; }
 
 static void initCompiler(Compiler *compiler, FunctionType type) {
+  compiler->enclosing = current;
   compiler->localCount = 0;
   compiler->scopeDepth = 0;
   compiler->type = type;
   compiler->function = newFunction();
+
+  if (type == TYPE_FUNCTION) {
+    // Copy name into struct from the source/tokenizer.
+    compiler->function->name =
+        copyString(parser.previous.start, parser.previous.length);
+  }
   current = compiler;
 
   // Reserve the first slot in the locals list.
@@ -150,10 +158,12 @@ static ObjFunction *endCompiler() {
   }
 #endif
 
+  current = current->enclosing;
   return func;
 }
 
 static void expression();
+static void block();
 static void statement();
 static void declaration();
 
@@ -677,6 +687,8 @@ static uint8_t parseVariable(const char *errorMsg) {
 }
 
 static void markInitialized() {
+  if (current->scopeDepth == 0)
+    return;
   current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
 
@@ -687,6 +699,37 @@ static void defineVariable(uint8_t global) {
   }
 
   emitBytes(OP_DEFINE_GLOBAL, global);
+}
+
+static void function(FunctionType type) {
+  // Setup new compiler for callstack/scope etc.
+  Compiler compiler;
+  initCompiler(&compiler, type);
+  beginScope();
+
+  consume(TOKEN_LEFT_PAREN, "Expected '(' after function name");
+
+  if (!check(TOKEN_RIGHT_PAREN)) {
+    // parse arguments.
+    do {
+      current->function->arity++;
+      if (current->function->arity > 255) {
+        errorAtCurrent("Can't have more than 255 parameters.");
+      }
+
+      uint8_t constant = parseVariable("Expected parameter name.");
+      defineVariable(constant);
+      // there's a comma next.
+    } while (match(TOKEN_COMMA));
+  }
+  // No params for now
+  consume(TOKEN_RIGHT_PAREN, "Expected ')' after function parameters.");
+  consume(TOKEN_LEFT_BRACE, "Expected '}' after function parameters.");
+  block();
+
+  ObjFunction *func = endCompiler();
+
+  emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(func)));
 }
 
 static void varDeclaration() {
@@ -702,9 +745,19 @@ static void varDeclaration() {
   defineVariable(global);
 }
 
+// fun <name>(args) { body }
+static void funDeclaration() {
+  uint8_t global = parseVariable("Expect variable name.");
+  markInitialized();
+  function(TYPE_FUNCTION);
+  defineVariable(global);
+}
+
 static void declaration() {
   if (match(TOKEN_VAR)) {
     varDeclaration();
+  } else if (match(TOKEN_FUN)) {
+    funDeclaration();
   } else {
     statement();
   }

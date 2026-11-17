@@ -32,10 +32,19 @@ $(TARGET): $(OBJS)
 clean:
 	rm -f $(OBJS) $(DEPS) $(TARGET)
 
+# clang-format binary. Falls back to the one bundled with the Xcode Command
+# Line Tools if it isn't on PATH. Override with `make format CLANG_FORMAT=...`.
+CLANG_FORMAT ?= $(shell command -v clang-format || xcrun --find clang-format)
+
+# Format all .c and .h files in place using .clang-format (the same style Zed's
+# format-on-save uses via clangd).
+format:
+	$(CLANG_FORMAT) --style=file -i $(wildcard *.c *.h)
+
 # Pull in the auto-generated header dependencies. Each .d file contains rules
 # like "main.o: main.c chunk.h common.h", so editing a header now correctly
 # forces the dependent .o files to rebuild. The leading '-' means "don't error
 # if the .d files don't exist yet" (e.g. on the very first build).
 -include $(DEPS)
 
-.PHONY: clean
+.PHONY: clean format

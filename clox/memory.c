@@ -1,43 +1,51 @@
 #include <stdlib.h>
 
+#include "chunk.h"
 #include "memory.h"
 #include "object.h"
 #include "vm.h"
 
-void* reallocate(void* pointer, size_t oldSize, size_t newSize) {
-    if (newSize == 0) {
-        free(pointer);
-        return NULL;
-    }
+void *reallocate(void *pointer, size_t oldSize, size_t newSize) {
+  if (newSize == 0) {
+    free(pointer);
+    return NULL;
+  }
 
-    void* result = realloc(pointer, newSize);
+  void *result = realloc(pointer, newSize);
 
-    // Not much to do if realloc fails.
-    if (result == NULL) {
-        exit(1);
-    }
+  // Not much to do if realloc fails.
+  if (result == NULL) {
+    exit(1);
+  }
 
-    return result;
+  return result;
 }
 
-static void freeObject(Obj* object) {
-    switch (object->type) {
-      case OBJ_STRING: {
-        // free object
-        ObjString* string = (ObjString*)object;
-        // free string (array of characters)
-        FREE_ARRAY(char, string->chars, string->length + 1);
-        // free allocated ObjString "value"
-        FREE(ObjString, object);
-      }
-    }
+static void freeObject(Obj *object) {
+  switch (object->type) {
+  case OBJ_STRING: {
+    // free object
+    ObjString *string = (ObjString *)object;
+    // free string (array of characters)
+    FREE_ARRAY(char, string->chars, string->length + 1);
+    // free allocated ObjString "value"
+    FREE(ObjString, object);
+    break;
+  }
+  case OBJ_FUNCTION: {
+    ObjFunction *function = (ObjFunction *)object;
+    freeChunk(&function->chunk);
+    FREE(ObjFunction, object);
+    break;
+  }
+  }
 }
 
 void freeObjects() {
-  Obj* object = vm.objects;
+  Obj *object = vm.objects;
 
   while (object != NULL) {
-    Obj* next = object->next;
+    Obj *next = object->next;
     freeObject(object);
     object = next;
   }

@@ -32,12 +32,12 @@ typedef enum {
   OP_LOOP,
 } OpCode;
 
-// Kind of like a slice
+// Kind of like a slice, autogrowing buffer of bytecode.
 typedef struct {
   int count;
   int capacity;
   uint8_t *code;
-  int* lines;
+  int *lines;
   ValueArray constants;
 } Chunk;
 

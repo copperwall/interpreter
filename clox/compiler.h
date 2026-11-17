@@ -2,6 +2,7 @@
 #define clox_compiler_h
 
 #include "chunk.h"
-bool compile(const char* source, Chunk* chunk);
+#include "object.h"
+ObjFunction *compile(const char *source);
 
 #endif

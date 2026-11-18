@@ -32,13 +32,22 @@ $(TARGET): $(OBJS)
 clean:
 	rm -f $(OBJS) $(DEPS) $(TARGET)
 
-# clang-format binary. Falls back to the one bundled with the Xcode Command
-# Line Tools if it isn't on PATH. Override with `make format CLANG_FORMAT=...`.
-CLANG_FORMAT ?= $(shell command -v clang-format || xcrun --find clang-format)
+# clang-format binary. On macOS, falls back to the one bundled with the Xcode
+# Command Line Tools if it isn't on PATH. Override with
+# `make format CLANG_FORMAT=...`.
+ifeq ($(shell uname -s),Darwin)
+CLANG_FORMAT ?= $(shell command -v clang-format 2>/dev/null || xcrun --find clang-format 2>/dev/null)
+else
+CLANG_FORMAT ?= $(shell command -v clang-format 2>/dev/null)
+endif
 
 # Format all .c and .h files in place using .clang-format (the same style Zed's
 # format-on-save uses via clangd).
 format:
+	@if [ -z "$(CLANG_FORMAT)" ]; then \
+		echo "error: clang-format not found. Install it (e.g. 'sudo apt install clang-format' on Ubuntu/WSL) or pass CLANG_FORMAT=/path/to/clang-format." >&2; \
+		exit 1; \
+	fi
 	$(CLANG_FORMAT) --style=file -i $(wildcard *.c *.h)
 
 # Pull in the auto-generated header dependencies. Each .d file contains rules

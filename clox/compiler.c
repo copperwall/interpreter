@@ -419,7 +419,6 @@ static uint8_t argumentList() {
 // OP_CALL just single arg which is the number of arguments.
 static void call(bool canAssign) {
   uint8_t numArguments = argumentList();
-  printf("Testing %d\n", numArguments);
   emitBytes(OP_CALL, numArguments);
 }
 

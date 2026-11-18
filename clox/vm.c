@@ -13,8 +13,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 VM vm;
+
+static Value clockNative(int argCount, Value *args) {
+  return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
 
 static void resetStack() {
   vm.stackTop = vm.stack;
@@ -47,6 +52,15 @@ static void runtimeError(const char *format, ...) {
   resetStack();
 }
 
+static void defineNative(const char *name, NativeFn function) {
+  // Pushing these onto the stack is for future GC reasons.
+  push(OBJ_VAL(copyString(name, (int)strlen(name))));
+  push(OBJ_VAL(newNative(function)));
+  tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+  pop();
+  pop();
+}
+
 // create new callstack, set ip to func chunk code
 static bool call(ObjFunction *func, uint8_t numArgs) {
   if (numArgs != func->arity) {
@@ -74,6 +88,14 @@ static bool callValue(Value callee, uint8_t numArgs) {
     switch (OBJ_TYPE(callee)) {
     case OBJ_FUNCTION:
       return call(AS_FUNCTION(callee), numArgs);
+    case OBJ_NATIVE: {
+      NativeFn func = AS_NATIVE(callee);
+      Value result = func(numArgs, vm.stackTop - numArgs);
+
+      vm.stackTop -= numArgs + 1;
+      push(result);
+      return true;
+    }
     default:
       break;
     }
@@ -342,6 +364,8 @@ void initVM() {
   vm.objects = NULL;
   initTable(&vm.globals);
   initTable(&vm.strings);
+
+  defineNative("clock", clockNative);
 }
 
 void freeVM() {

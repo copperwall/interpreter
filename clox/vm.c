@@ -30,18 +30,36 @@ static void runtimeError(const char *format, ...) {
 
   fputs("\n", stderr);
 
-  CallFrame *frame = &vm.frames[vm.frameCount - 1];
+  // Stack trace means go from current frame back to first frame and print
+  // function and line.
+  for (int i = vm.frameCount - 1; i >= 0; i--) {
+    CallFrame *frame = &vm.frames[i];
+    ObjFunction *func = frame->function;
 
-  size_t instruction = frame->ip - frame->function->chunk.code - 1;
-  int line = frame->function->chunk.lines[instruction];
-
-  // Get the line of the current instruction
-  fprintf(stderr, "[line %d] in script\n", line);
+    size_t instruction = frame->ip - frame->function->chunk.code - 1;
+    fprintf(stderr, "[line %d] in ", func->chunk.lines[instruction]);
+    if (func->name == NULL) {
+      fprintf(stderr, "script\n");
+    } else {
+      fprintf(stderr, "%s()\n", func->name->chars);
+    }
+  }
   resetStack();
 }
 
 // create new callstack, set ip to func chunk code
 static bool call(ObjFunction *func, uint8_t numArgs) {
+  if (numArgs != func->arity) {
+    runtimeError("Expected %d arguments for %.*s, but got %d", func->arity,
+                 func->name->length, func->name->chars, numArgs);
+    return false;
+  }
+
+  if (vm.frameCount == FRAME_MAX) {
+    runtimeError("Stack overflow.");
+    return false;
+  }
+
   CallFrame *frame = &vm.frames[vm.frameCount++];
 
   frame->function = func;

@@ -144,7 +144,10 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
   emitByte(byte2);
 }
 
-static void emitReturn() { emitByte(OP_NIL); emitByte(OP_RETURN); }
+static void emitReturn() {
+  emitByte(OP_NIL);
+  emitByte(OP_RETURN);
+}
 
 // For now, every compiled program ends with an OP_RETURN, to return the
 // expression compiled.
@@ -174,7 +177,7 @@ static void binary(bool canAssign) {
   // Left is already parsed, and its operations are on the stack and bytecode
   // has already been written operator was just parsed
 
-  TokenType operator = parser.previous.type;
+  TokenType operator= parser.previous.type;
 
   // Get the precedence of the operator
   ParseRule *rule = getRule(operator);
@@ -871,6 +874,20 @@ static void forStatement() {
   endScope();
 }
 
+static void returnStatement() {
+  if (current->type == TYPE_SCRIPT) {
+    error("Can't return from top-level code.");
+  }
+
+  if (match(TOKEN_SEMICOLON)) {
+    emitReturn();
+  } else {
+    expression();
+    consume(TOKEN_SEMICOLON, "Expected ';' after return expression.");
+    emitByte(OP_RETURN);
+  }
+}
+
 static void block() {
   while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
     declaration();
@@ -886,6 +903,8 @@ static void statement() {
     ifStatement();
   } else if (match(TOKEN_WHILE)) {
     whileStatement();
+  } else if (match(TOKEN_RETURN)) {
+    returnStatement();
   } else if (match(TOKEN_FOR)) {
     forStatement();
   } else if (match(TOKEN_LEFT_BRACE)) {

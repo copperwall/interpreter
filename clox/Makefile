@@ -28,9 +28,36 @@ $(TARGET): $(OBJS)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Optimized release build. Objects live in their own directory so they never
+# get mixed up with the debug objects above.
+#   -O2     : optimize
+#   -DNDEBUG: compile out assert()s
+# (no -g: no debug symbols)
+RELEASE_DIR = build/release
+RELEASE_CFLAGS = -Wall -Wextra -std=c11 -O2 -DNDEBUG -MMD -MP
+RELEASE_OBJS = $(addprefix $(RELEASE_DIR)/,$(OBJS))
+RELEASE_DEPS = $(RELEASE_OBJS:.o=.d)
+RELEASE_TARGET = $(RELEASE_DIR)/$(TARGET)
+
+release: $(RELEASE_TARGET)
+
+$(RELEASE_TARGET): $(RELEASE_OBJS)
+	$(CC) $(RELEASE_CFLAGS) -o $@ $(RELEASE_OBJS)
+
+$(RELEASE_DIR)/%.o: %.c | $(RELEASE_DIR)
+	$(CC) $(RELEASE_CFLAGS) -c $< -o $@
+
+$(RELEASE_DIR):
+	mkdir -p $@
+
+# Run the fib benchmark against the release build.
+bench: $(RELEASE_TARGET)
+	./$(RELEASE_TARGET) fib_timer.clox
+
 # Remove build artifacts.
 clean:
 	rm -f $(OBJS) $(DEPS) $(TARGET)
+	rm -rf build
 
 # clang-format binary. On macOS, falls back to the one bundled with the Xcode
 # Command Line Tools if it isn't on PATH. Override with
@@ -54,6 +81,6 @@ format:
 # like "main.o: main.c chunk.h common.h", so editing a header now correctly
 # forces the dependent .o files to rebuild. The leading '-' means "don't error
 # if the .d files don't exist yet" (e.g. on the very first build).
--include $(DEPS)
+-include $(DEPS) $(RELEASE_DEPS)
 
-.PHONY: clean format
+.PHONY: clean format release bench

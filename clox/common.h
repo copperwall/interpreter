@@ -7,8 +7,17 @@
 
 // #define EXTREME_PARSER_TRACE
 
-#define DEBUG_PRINT_CODE
-#define DEBUG_TRACE_EXECUTION
+// #define DEBUG_PRINT_CODE
+// #define DEBUG_TRACE_EXECUTION
+
+// Release builds (`make release` / `make bench`, which pass -DNDEBUG) always
+// strip the debug output, regardless of which flags are enabled above, so
+// benchmarks never end up timing printf.
+#ifdef NDEBUG
+#undef EXTREME_PARSER_TRACE
+#undef DEBUG_PRINT_CODE
+#undef DEBUG_TRACE_EXECUTION
+#endif
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 

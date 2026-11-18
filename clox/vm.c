@@ -40,6 +40,31 @@ static void runtimeError(const char *format, ...) {
   resetStack();
 }
 
+// create new callstack, set ip to func chunk code
+static bool call(ObjFunction *func, uint8_t numArgs) {
+  CallFrame *frame = &vm.frames[vm.frameCount++];
+
+  frame->function = func;
+  frame->ip = func->chunk.code;
+  frame->slots = vm.stackTop - numArgs - 1;
+
+  return true;
+}
+
+static bool callValue(Value callee, uint8_t numArgs) {
+  if (IS_OBJ(callee)) {
+    switch (OBJ_TYPE(callee)) {
+    case OBJ_FUNCTION:
+      return call(AS_FUNCTION(callee), numArgs);
+    default:
+      break;
+    }
+  }
+
+  runtimeError("Cannot call non function");
+  return false;
+}
+
 // Not signed perhaps
 static Value peek(int distance) {
   // stackTop is next available
@@ -114,7 +139,18 @@ static InterpretResult run() {
     uint8_t instruction;
     switch (instruction = READ_BYTE()) {
     case OP_RETURN: {
-      return INTERPRET_OK;
+      Value value = pop();
+      vm.frameCount--;
+      if (vm.frameCount == 0) {
+        pop();
+        return INTERPRET_OK;
+      }
+
+      vm.stackTop = frame->slots;
+      push(value);
+      frame = &vm.frames[vm.frameCount - 1];
+
+      break;
     }
     case OP_PRINT: {
       // Pop off statement and print value
@@ -260,6 +296,17 @@ static InterpretResult run() {
       frame->ip -= offset;
       break;
     }
+    case OP_CALL: {
+      uint8_t numArgs = READ_BYTE();
+      if (!callValue(peek(numArgs), numArgs)) {
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      // update local cached pointer, since callValue can
+      // add a new CallFrame
+      frame = &vm.frames[vm.frameCount - 1];
+      break;
+    }
     default: {
       printf("Unknown instruction: ");
       exit(1);
@@ -319,11 +366,6 @@ InterpretResult interpret(const char *source) {
   push(OBJ_VAL(func));
 
   // Create a new callstack
-
-  CallFrame *frame = &vm.frames[vm.frameCount++];
-  frame->function = func;
-  frame->ip = func->chunk.code;
-  frame->slots = vm.stack;
-
+  call(func, 0);
   return run();
 }

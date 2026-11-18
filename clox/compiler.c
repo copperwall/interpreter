@@ -396,6 +396,30 @@ static uint8_t identifierConstant(Token *name) {
   return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
+static uint8_t argumentList() {
+  uint8_t numArgs = 0;
+
+  if (!check(TOKEN_RIGHT_PAREN)) {
+    do {
+      expression();
+      if (numArgs == 255) {
+        error("Can't have more than 255 arguments.");
+      }
+      numArgs++;
+    } while (match(TOKEN_COMMA));
+  }
+
+  consume(TOKEN_RIGHT_PAREN, "Expected ')' after argument list");
+  return numArgs;
+}
+
+// OP_CALL just single arg which is the number of arguments.
+static void call(bool canAssign) {
+  uint8_t numArguments = argumentList();
+  printf("Testing %d\n", numArguments);
+  emitBytes(OP_CALL, numArguments);
+}
+
 static bool identifiersEqual(Token *a, Token *b) {
   // compare length first
   if (a->length != b->length)
@@ -539,7 +563,7 @@ static void string(bool canAssign) {
 }
 
 ParseRule rules[] = {
-    [TOKEN_LEFT_PAREN] = {grouping, NULL, PREC_NONE},
+    [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},

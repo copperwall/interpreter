@@ -148,6 +148,14 @@ static ObjUpvalue *captureUpvalue(Value *local) {
   return createdUpvalue;
 }
 
+/**
+ * vm.openUpvalues are sorted highest location address first, and
+ * closeUpvalues should be called on the function whose variables are at the
+ * top of the stack and about to be cleaned up.
+ *
+ * This is why we start at the head and advance the head pointer and
+ * stop once a upvalue location pointer is less than |last|.
+ */
 static void closeUpvalues(Value *last) {
   while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
     ObjUpvalue *upvalue = vm.openUpvalues;

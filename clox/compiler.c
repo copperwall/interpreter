@@ -258,14 +258,12 @@ static void beginScope() { current->scopeDepth++; }
 static void endScope() {
   current->scopeDepth--;
 
-  printf("Ending scope for %s\n", current->function->name->chars);
   // pop all local vars from this scope off the stack
   while (current->localCount > 0 &&
          current->locals[current->localCount - 1].depth > current->scopeDepth) {
 
     // Captured variables must be handled differently.
     if (current->locals[current->localCount - 1].isCaptured) {
-      printf("OP_CLOSE_UPVALUE!\n");
       emitByte(OP_CLOSE_UPVALUE);
     } else {
       emitByte(OP_POP);

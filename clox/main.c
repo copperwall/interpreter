@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DEBUG_TRACE_EXECUTION
-
 static void repl() {
   char line[1024];
   for (;;) {

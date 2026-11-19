@@ -24,6 +24,7 @@ static Value clockNative(int argCount, Value *args) {
 static void resetStack() {
   vm.stackTop = vm.stack;
   vm.frameCount = 0;
+  vm.openUpvalues = NULL;
 }
 
 static void runtimeError(const char *format, ...) {
@@ -39,9 +40,9 @@ static void runtimeError(const char *format, ...) {
   // function and line.
   for (int i = vm.frameCount - 1; i >= 0; i--) {
     CallFrame *frame = &vm.frames[i];
-    ObjFunction *func = frame->function;
+    ObjFunction *func = frame->closure->function;
 
-    size_t instruction = frame->ip - frame->function->chunk.code - 1;
+    size_t instruction = frame->ip - frame->closure->function->chunk.code - 1;
     fprintf(stderr, "[line %d] in ", func->chunk.lines[instruction]);
     if (func->name == NULL) {
       fprintf(stderr, "script\n");
@@ -62,10 +63,11 @@ static void defineNative(const char *name, NativeFn function) {
 }
 
 // create new callstack, set ip to func chunk code
-static bool call(ObjFunction *func, uint8_t numArgs) {
-  if (numArgs != func->arity) {
-    runtimeError("Expected %d arguments for %.*s, but got %d", func->arity,
-                 func->name->length, func->name->chars, numArgs);
+static bool call(ObjClosure *closure, uint8_t numArgs) {
+  if (numArgs != closure->function->arity) {
+    runtimeError("Expected %d arguments for %.*s, but got %d",
+                 closure->function->arity, closure->function->name->length,
+                 closure->function->name->chars, numArgs);
     return false;
   }
 
@@ -76,8 +78,8 @@ static bool call(ObjFunction *func, uint8_t numArgs) {
 
   CallFrame *frame = &vm.frames[vm.frameCount++];
 
-  frame->function = func;
-  frame->ip = func->chunk.code;
+  frame->closure = closure;
+  frame->ip = closure->function->chunk.code;
   frame->slots = vm.stackTop - numArgs - 1;
 
   return true;
@@ -86,8 +88,8 @@ static bool call(ObjFunction *func, uint8_t numArgs) {
 static bool callValue(Value callee, uint8_t numArgs) {
   if (IS_OBJ(callee)) {
     switch (OBJ_TYPE(callee)) {
-    case OBJ_FUNCTION:
-      return call(AS_FUNCTION(callee), numArgs);
+    case OBJ_CLOSURE:
+      return call(AS_CLOSURE(callee), numArgs);
     case OBJ_NATIVE: {
       NativeFn func = AS_NATIVE(callee);
       Value result = func(numArgs, vm.stackTop - numArgs);
@@ -115,6 +117,44 @@ static Value peek(int distance) {
 
 static bool isFalsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+// Uses insertion sort to sort by local pointer.
+static ObjUpvalue *captureUpvalue(Value *local) {
+  ObjUpvalue *prevUpvalue = NULL;
+  ObjUpvalue *upvalue = vm.openUpvalues;
+
+  while (upvalue != NULL && upvalue->location > local) {
+    prevUpvalue = upvalue;
+    upvalue = upvalue->next;
+  }
+
+  if (upvalue != NULL && upvalue->location == local) {
+    return upvalue;
+  }
+
+  // Upvalue not found, create a new one.
+
+  ObjUpvalue *createdUpvalue = newUpvalue(local);
+  createdUpvalue->next = upvalue;
+
+  // If there is no previous, the new head is the createdUpvalue.
+  if (prevUpvalue == NULL) {
+    vm.openUpvalues = createdUpvalue;
+  } else {
+    prevUpvalue->next = createdUpvalue;
+  }
+
+  return createdUpvalue;
+}
+
+static void closeUpvalues(Value *last) {
+  while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
+    ObjUpvalue *upvalue = vm.openUpvalues;
+    upvalue->closed = *upvalue->location;
+    upvalue->location = &upvalue->closed;
+    vm.openUpvalues = upvalue->next;
+  }
 }
 
 static void concatenate() {
@@ -145,7 +185,8 @@ static InterpretResult run() {
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT()                                                           \
   (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
-#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+#define READ_CONSTANT()                                                        \
+  (frame->closure->function->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
 #ifdef DEBUG_TRACE_EXECUTION
@@ -173,13 +214,15 @@ static InterpretResult run() {
       printf(" ]");
     }
     printf("\n");
-    disassembleInstruction(&frame->function->chunk,
-                           (int)(frame->ip - frame->function->chunk.code));
+    disassembleInstruction(
+        &frame->closure->function->chunk,
+        (int)(frame->ip - frame->closure->function->chunk.code));
 #endif
     uint8_t instruction;
     switch (instruction = READ_BYTE()) {
     case OP_RETURN: {
       Value value = pop();
+      closeUpvalues(frame->slots);
       vm.frameCount--;
       if (vm.frameCount == 0) {
         pop();
@@ -311,6 +354,18 @@ static InterpretResult run() {
       frame->slots[slot] = peek(0);
       break;
     }
+    case OP_GET_UPVALUE: {
+      uint8_t slot = READ_BYTE();
+      push(*frame->closure->upvalues[slot]->location);
+
+      break;
+    }
+    case OP_SET_UPVALUE: {
+      uint8_t slot = READ_BYTE();
+
+      *frame->closure->upvalues[slot]->location = peek(0);
+      break;
+    }
     case OP_POP: {
       // Pop value off the stack
       pop();
@@ -345,6 +400,35 @@ static InterpretResult run() {
       // update local cached pointer, since callValue can
       // add a new CallFrame
       frame = &vm.frames[vm.frameCount - 1];
+      break;
+    }
+    case OP_CLOSURE: {
+      // read byte
+      ObjFunction *func = AS_FUNCTION(READ_CONSTANT());
+      ObjClosure *closure = newClosure(func);
+
+      push(OBJ_VAL(closure));
+
+      // Read pairs of bytes for the amount of upvalues
+      for (int i = 0; i < closure->upvalueCount; i++) {
+        uint8_t isLocal = READ_BYTE();
+        uint8_t index = READ_BYTE();
+
+        if (isLocal) {
+          // If it's local we need to grab it from the stack.
+          closure->upvalues[i] = captureUpvalue(frame->slots + index);
+        } else {
+          // If it's not local, we can just grab it off the enclosing
+          // frame's upvalues.
+          closure->upvalues[i] = frame->closure->upvalues[index];
+        }
+      }
+
+      break;
+    }
+    case OP_CLOSE_UPVALUE: {
+      closeUpvalues(vm.stackTop - 1);
+      pop();
       break;
     }
     default: {
@@ -404,10 +488,13 @@ InterpretResult interpret(const char *source) {
     return INTERPRET_COMPILE_ERROR;
   }
 
-  // Push this object to the stack
+  // Push this object to the stack, the push/pop shenanigans is for upcoming GC.
   push(OBJ_VAL(func));
+  ObjClosure *closure = newClosure(func);
+  pop();
+  push(OBJ_VAL(closure));
 
   // Create a new callstack
-  call(func, 0);
+  call(closure, 0);
   return run();
 }

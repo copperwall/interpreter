@@ -12,7 +12,7 @@
 
 typedef struct {
   // Reference to the function being invoked.
-  ObjFunction *function;
+  ObjClosure *closure;
   // ip to return to after the function is done.
   uint8_t *ip;
   // Where in the stack to access locals.
@@ -29,6 +29,7 @@ typedef struct {
   Value *stackTop;
   Table globals;
   Table strings;
+  ObjUpvalue *openUpvalues;
   Obj *objects;
 } VM;
 

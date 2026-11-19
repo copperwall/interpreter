@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 typedef enum {
   PREC_NONE,
@@ -36,7 +37,13 @@ typedef struct {
 typedef struct {
   Token name;
   int depth;
+  bool isCaptured;
 } Local;
+
+typedef struct {
+  uint8_t index;
+  bool isLocal;
+} Upvalue;
 
 typedef enum {
   TYPE_FUNCTION,
@@ -52,6 +59,7 @@ typedef struct Compiler {
   FunctionType type;
   Local locals[UINT8_COUNT];
   int localCount;
+  Upvalue upvalues[UINT8_COUNT];
   int scopeDepth;
 } Compiler;
 
@@ -87,6 +95,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   local->depth = 0;
   local->name.start = "";
   local->name.length = 0;
+  local->isCaptured = false;
 }
 
 // "[line <line>] Error at <token>: <message>"
@@ -249,18 +258,23 @@ static void beginScope() { current->scopeDepth++; }
 static void endScope() {
   current->scopeDepth--;
 
+  printf("Ending scope for %s\n", current->function->name->chars);
   // pop all local vars from this scope off the stack
   while (current->localCount > 0 &&
          current->locals[current->localCount - 1].depth > current->scopeDepth) {
-    emitByte(OP_POP);
+
+    // Captured variables must be handled differently.
+    if (current->locals[current->localCount - 1].isCaptured) {
+      printf("OP_CLOSE_UPVALUE!\n");
+      emitByte(OP_CLOSE_UPVALUE);
+    } else {
+      emitByte(OP_POP);
+    }
     current->localCount--;
   }
 }
 
 static uint8_t makeConstant(Value value) {
-  // Add to chunk's constant list
-  Chunk *chunk = currentChunk();
-
   // Maybe have this return an unsigned value.
   int constant = addConstant(currentChunk(), value);
 
@@ -439,6 +453,7 @@ static void addLocal(Token name) {
   Local *local = &current->locals[current->localCount++];
   local->name = name;
   local->depth = -1;
+  local->isCaptured = false;
 }
 
 static void declareVariable() {
@@ -483,6 +498,58 @@ static int resolveLocal(Compiler *current, Token *name) {
   return -1;
 }
 
+/**
+ * Update a function's upvalue count and set the index and whether or not it is
+ * local.
+ */
+static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
+  int upvalueCount = compiler->function->upvalueCount;
+
+  for (int i = 0; i < upvalueCount; i++) {
+    Upvalue *upvalue = &compiler->upvalues[i];
+
+    if (upvalue->index == index && upvalue->isLocal == isLocal) {
+      return i;
+    }
+  }
+
+  if (upvalueCount == UINT8_COUNT) {
+    error("Too many closure variables in function.");
+    return 0;
+  }
+
+  compiler->upvalues[upvalueCount].isLocal = isLocal;
+  compiler->upvalues[upvalueCount].index = index;
+
+  return compiler->function->upvalueCount++;
+}
+
+/**
+ * This is called after we try to resolve a local value and it isn't in local
+ * scope, so we know it's not in the current local scope.
+ */
+static int resolveUpvalue(Compiler *compiler, Token *name) {
+  if (compiler->enclosing == NULL)
+    return -1;
+
+  // Does this name exist in the enclosing scope?
+  int local = resolveLocal(compiler->enclosing, name);
+
+  if (local != -1) {
+    printf("Captured %.*s\n", name->length, name->start);
+    // When we capture a variable from a closure, mark it captured.
+    compiler->enclosing->locals[local].isCaptured = true;
+    return addUpvalue(compiler, (uint8_t)local, true);
+  }
+
+  int upvalue = resolveUpvalue(compiler->enclosing, name);
+  if (upvalue != -1) {
+    return addUpvalue(compiler, (uint8_t)upvalue, false);
+  }
+
+  return -1;
+}
+
 static void namedVariable(Token name, bool canAssign) {
   uint8_t getOp, setOp;
   int arg = resolveLocal(current, &name);
@@ -491,6 +558,9 @@ static void namedVariable(Token name, bool canAssign) {
   if (arg != -1) {
     getOp = OP_GET_LOCAL;
     setOp = OP_SET_LOCAL;
+  } else if ((arg = resolveUpvalue(current, &name)) != -1) {
+    getOp = OP_GET_UPVALUE;
+    setOp = OP_SET_UPVALUE;
   } else {
     arg = identifierConstant(&name);
     getOp = OP_GET_GLOBAL;
@@ -755,7 +825,15 @@ static void function(FunctionType type) {
 
   ObjFunction *func = endCompiler();
 
-  emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(func)));
+  // OP_CLOSURE has variable encoding, meaning it could have an arbitrary number
+  // of operands.
+  emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(func)));
+
+  for (int i = 0; i < func->upvalueCount; i++) {
+    // is it local and what's the index
+    emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
+    emitByte(compiler.upvalues[i].index);
+  }
 }
 
 static void varDeclaration() {
@@ -914,8 +992,6 @@ static void statement() {
     expressionStatement();
   }
 }
-
-static void declartion() { statement(); }
 
 ObjFunction *compile(const char *source) {
   initScanner(source);

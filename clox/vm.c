@@ -168,8 +168,8 @@ static void closeUpvalues(Value *last) {
 static void concatenate() {
   // Already checked types
   // pop string operands off stack
-  ObjString *b = AS_STRING(pop());
-  ObjString *a = AS_STRING(pop());
+  ObjString *b = AS_STRING(peek(0));
+  ObjString *a = AS_STRING(peek(1));
 
   int length = a->length + b->length;
 
@@ -182,6 +182,8 @@ static void concatenate() {
   chars[length] = '\0';
 
   ObjString *result = takeString(chars, length);
+  pop();
+  pop();
   push(OBJ_VAL(result));
 
   // allocate new string the size of both combined
@@ -454,8 +456,14 @@ static InterpretResult run() {
 void initVM() {
   resetStack();
   vm.objects = NULL;
+  vm.bytesAllocated = 0;
+  vm.nextGC = 1024 * 1024;
   initTable(&vm.globals);
   initTable(&vm.strings);
+
+  vm.grayCapacity = 0;
+  vm.grayCount = 0;
+  vm.grayStack = NULL;
 
   defineNative("clock", clockNative);
 }

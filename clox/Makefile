@@ -65,8 +65,10 @@ $(RELEASE_DIR):
 
 # Debug build with bytecode disassembly (DEBUG_PRINT_CODE) and VM execution
 # tracing (DEBUG_TRACE_EXECUTION) enabled, in build/debug.
+#   -fsanitize=undefined: UBSan, reports undefined behavior at runtime (e.g.
+#                         loading a bool that isn't 0 or 1)
 DEBUG_DIR = build/debug
-DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION
+DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_STRESS_GC -DDEBUG_LOG_GC -fsanitize=undefined
 DEBUG_OBJS = $(addprefix $(DEBUG_DIR)/,$(OBJS))
 DEBUG_DEPS = $(DEBUG_OBJS:.o=.d)
 DEBUG_TARGET = $(DEBUG_DIR)/$(TARGET)

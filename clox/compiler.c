@@ -2,6 +2,7 @@
 #include "chunk.h"
 #include "common.h"
 #include "debug.h"
+#include "memory.h"
 #include "object.h"
 #include "scanner.h"
 #include "value.h"
@@ -534,7 +535,6 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
   int local = resolveLocal(compiler->enclosing, name);
 
   if (local != -1) {
-    printf("Captured %.*s\n", name->length, name->start);
     // When we capture a variable from a closure, mark it captured.
     compiler->enclosing->locals[local].isCaptured = true;
     return addUpvalue(compiler, (uint8_t)local, true);
@@ -1010,4 +1010,13 @@ ObjFunction *compile(const char *source) {
     return NULL;
   }
   return func;
+}
+
+void markCompilerRoots() {
+  Compiler *compiler = current;
+
+  while (compiler != NULL) {
+    markObject((Obj *)compiler->function);
+    compiler = compiler->enclosing;
+  }
 }

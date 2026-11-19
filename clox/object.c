@@ -17,10 +17,15 @@ static Obj *allocateObject(size_t size, ObjType type) {
   // |type| is for tagging
   Obj *object = (Obj *)reallocate(NULL, 0, size);
   object->type = type;
+  object->isMarked = false;
 
   // insert at head of our list of allocated objects
   object->next = vm.objects;
   vm.objects = object;
+
+#ifdef DEBUG_LOG_GC
+  printf("%p allocate %zu for %d\n", (void *)object, size, type);
+#endif
   return object;
 }
 
@@ -83,7 +88,11 @@ static ObjString *allocateString(char *chars, int length, uint32_t hash) {
   string->chars = chars;
   string->hash = hash;
 
+  // Push onto value stack so that it is marked as a root and not GC'd
+  // before being in the string table.
+  push(OBJ_VAL(string));
   tableSet(&vm.strings, string, NIL_VAL);
+  pop();
   return string;
 }
 

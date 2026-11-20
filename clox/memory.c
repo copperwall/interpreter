@@ -74,6 +74,9 @@ static void freeObject(Obj *object) {
     FREE(ObjUpvalue, object);
     break;
   }
+  case OBJ_CLASS: {
+    FREE(ObjClass, object);
+  }
   case OBJ_NATIVE: {
     FREE(ObjNative, object);
     break;
@@ -145,6 +148,11 @@ static void blackenObject(Obj *object) {
       markObject((Obj *)closure->upvalues[i]);
     }
     break;
+  case OBJ_CLASS: {
+    ObjClass *klass = (ObjClass *)object;
+    markObject((Obj *)klass->name);
+    break;
+  }
   // Nothing to recurse on these types.
   case OBJ_NATIVE:
   case OBJ_STRING:

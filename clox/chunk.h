@@ -35,6 +35,7 @@ typedef enum {
   OP_CALL,
   OP_CLOSURE,
   OP_CLOSE_UPVALUE,
+  OP_CLASS,
 } OpCode;
 
 // Kind of like a slice, autogrowing buffer of bytecode.

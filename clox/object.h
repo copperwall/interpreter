@@ -22,12 +22,16 @@
 #define IS_CLOSURE(value) (isObjType(value, OBJ_CLOJURE))
 #define AS_CLOSURE(value) (((ObjClosure *)AS_OBJ(value)))
 
+#define IS_CLASS(value) (isObjType(value, OBJ_CLASS))
+#define AS_CLASS(value) (((ObjClass *)AS_OBJ(value)))
+
 typedef enum {
   OBJ_FUNCTION,
   OBJ_STRING,
   OBJ_NATIVE,
   OBJ_CLOSURE,
   OBJ_UPVALUE,
+  OBJ_CLASS,
 } ObjType;
 
 struct Obj {
@@ -58,6 +62,11 @@ typedef struct {
   int upvalueCount;
 } ObjClosure;
 
+typedef struct {
+  Obj obj;
+  ObjString *name;
+} ObjClass;
+
 typedef Value (*NativeFn)(int argCount, Value *args);
 
 typedef struct {
@@ -75,6 +84,7 @@ struct ObjString {
 ObjFunction *newFunction();
 ObjClosure *newClosure(ObjFunction *function);
 ObjUpvalue *newUpvalue(Value *slot);
+ObjClass *newClass(ObjString *name);
 ObjNative *newNative(NativeFn function);
 ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *chars, int lenght);

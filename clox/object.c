@@ -61,6 +61,13 @@ ObjUpvalue *newUpvalue(Value *slot) {
   return upvalue;
 }
 
+ObjClass *newClass(ObjString *name) {
+  ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+  klass->name = name;
+
+  return klass;
+}
+
 ObjNative *newNative(NativeFn function) {
   ObjNative *native = ALLOCATE_OBJ(ObjNative, OBJ_NATIVE);
 
@@ -151,5 +158,7 @@ void printObject(Value value) {
   case OBJ_UPVALUE:
     printf("upvalue");
     break;
+  case OBJ_CLASS:
+    printf("<class %s>", AS_CLASS(value)->name->chars);
   }
 }

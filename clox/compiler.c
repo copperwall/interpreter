@@ -855,8 +855,24 @@ static void funDeclaration() {
   defineVariable(global);
 }
 
+static void classDeclaration() {
+  consume(TOKEN_IDENTIFIER, "Expect class name.");
+
+  uint8_t nameConstant = identifierConstant(&parser.previous);
+  declareVariable();
+
+  emitBytes(OP_CLASS, nameConstant);
+  // TODO: Not totally clear why we don't define it right after declaring it.
+  defineVariable(nameConstant);
+
+  consume(TOKEN_LEFT_BRACE, "Expected '{' after class name.");
+  consume(TOKEN_RIGHT_BRACE, "Expected '}' after class name.");
+}
+
 static void declaration() {
-  if (match(TOKEN_VAR)) {
+  if (match(TOKEN_CLASS)) {
+    classDeclaration();
+  } else if (match(TOKEN_VAR)) {
     varDeclaration();
   } else if (match(TOKEN_FUN)) {
     funDeclaration();

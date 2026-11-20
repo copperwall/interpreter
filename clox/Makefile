@@ -68,12 +68,18 @@ $(RELEASE_DIR):
 #   -fsanitize=undefined: UBSan, reports undefined behavior at runtime (e.g.
 #                         loading a bool that isn't 0 or 1)
 DEBUG_DIR = build/debug
-DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_STRESS_GC -DDEBUG_LOG_GC -fsanitize=undefined
+DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION  -fsanitize=undefined
+GC_DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_STRESS_GC -DDEBUG_LOG_GC -fsanitize=undefined
 DEBUG_OBJS = $(addprefix $(DEBUG_DIR)/,$(OBJS))
 DEBUG_DEPS = $(DEBUG_OBJS:.o=.d)
 DEBUG_TARGET = $(DEBUG_DIR)/$(TARGET)
 
 debug: $(DEBUG_TARGET)
+
+gc-debug: $(FULL_DEBUG_TARGET)
+
+$(FULL_DEBUG_TARGET): $(DEBUG_OBJS)
+	$(CC) $(FULL_DEBUG_CFLAGS) -o $@ $(DEBUG_OBJS)
 
 $(DEBUG_TARGET): $(DEBUG_OBJS)
 	$(CC) $(DEBUG_CFLAGS) -o $@ $(DEBUG_OBJS)

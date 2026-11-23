@@ -862,7 +862,6 @@ static void classDeclaration() {
   declareVariable();
 
   emitBytes(OP_CLASS, nameConstant);
-  // TODO: Not totally clear why we don't define it right after declaring it.
   defineVariable(nameConstant);
 
   consume(TOKEN_LEFT_BRACE, "Expected '{' after class name.");

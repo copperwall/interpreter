@@ -98,6 +98,14 @@ static bool callValue(Value callee, uint8_t numArgs) {
       push(result);
       return true;
     }
+    case OBJ_CLASS: {
+      ObjClass *klass = AS_CLASS(callee);
+
+      // Need to create a new instance and push it onto the stack.
+      ObjInstance *instance = newInstance(klass);
+      vm.stackTop[-numArgs - 1] = OBJ_VAL(newInstance(klass));
+      return true;
+    }
     default:
       break;
     }
@@ -439,6 +447,13 @@ static InterpretResult run() {
     case OP_CLOSE_UPVALUE: {
       closeUpvalues(vm.stackTop - 1);
       pop();
+      break;
+    }
+    // Creates a new class with the name from the string operand
+    case OP_CLASS: {
+      ObjString *name = READ_STRING();
+      push(OBJ_VAL(newClass(name)));
+
       break;
     }
     default: {

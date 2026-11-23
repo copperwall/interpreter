@@ -659,6 +659,26 @@ static void dot(bool canAssign) {
   }
 }
 
+static void dynamicProp(bool canAssign) {
+  // left side has already been parsed and emitted
+  // TOKEN_DOT has already been consumed
+
+  // right hand is expression and then ']'
+  expression();
+  consume(TOKEN_RIGHT_BRACKET, "Expected ']' after dynamic prop access.");
+
+  if (canAssign && match(TOKEN_EQUAL)) {
+    // consume '=' and parse expression
+    expression();
+    // Operand is name index, expects instance on the stack
+    emitByte(OP_SET_DYN_PROPERTY);
+  } else {
+    // emit instruction to get name
+    // Operand is name index, expects instance on the stack
+    emitByte(OP_GET_DYN_PROPERTY);
+  }
+}
+
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
@@ -666,6 +686,8 @@ ParseRule rules[] = {
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
     [TOKEN_DOT] = {NULL, dot, PREC_CALL},
+    [TOKEN_LEFT_BRACKET] = {NULL, dynamicProp, PREC_CALL},
+    [TOKEN_RIGHT_BRACKET] = {NULL, NULL, PREC_NONE},
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
     [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},

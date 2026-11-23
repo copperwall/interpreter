@@ -404,12 +404,11 @@ static InterpretResult run() {
       if (tableGet(&instance->fields, name, &value)) {
         pop();
         push(value);
-        break;
+      } else {
+        pop();
+        push(NIL_VAL);
       }
-
-      // If field is missing, runtime error
-      runtimeError("Undefined property '%s'", name->chars);
-      return INTERPRET_RUNTIME_ERROR;
+      break;
     }
     case OP_SET_PROPERTY: {
       if (!IS_INSTANCE(peek(1))) {
@@ -422,6 +421,59 @@ static InterpretResult run() {
       Value value = pop();
       tableSet(&instance->fields, name, value);
 
+      pop();
+      push(value);
+      break;
+    }
+    case OP_GET_DYN_PROPERTY: {
+      // stack should be instance, name (stack top)
+      if (!IS_INSTANCE(peek(1))) {
+        runtimeError("Expected get access on class instance");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+      // Operand is index for constant
+      // instance value is on stack
+      ObjInstance *instance = AS_INSTANCE(peek(1));
+      if (!IS_STRING(peek(0))) {
+        runtimeError("Expected string value for dynamic prop access.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      ObjString *name = AS_STRING(pop());
+
+      Value value;
+
+      if (tableGet(&instance->fields, name, &value)) {
+        // instance
+        pop();
+        push(value);
+      } else {
+        // instance
+        pop();
+        push(NIL_VAL);
+      }
+      break;
+    }
+    case OP_SET_DYN_PROPERTY: {
+      // stack should be instance, name, value (stack top)
+      if (!IS_INSTANCE(peek(2))) {
+        runtimeError("Expected set access on class instance");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+      ObjInstance *instance = AS_INSTANCE(peek(2));
+
+      if (!IS_STRING(peek(1))) {
+        runtimeError("Expected string value for dynamic prop access.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      ObjString *name = AS_STRING(peek(1));
+      Value value = pop();
+      tableSet(&instance->fields, name, value);
+
+      // name
+      pop();
+      // instance
       pop();
       push(value);
       break;

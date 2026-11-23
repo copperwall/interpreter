@@ -69,17 +69,11 @@ $(RELEASE_DIR):
 #                         loading a bool that isn't 0 or 1)
 DEBUG_DIR = build/debug
 DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION  -fsanitize=undefined
-GC_DEBUG_CFLAGS = $(CFLAGS) -DDEBUG_PRINT_CODE -DDEBUG_TRACE_EXECUTION -DDEBUG_STRESS_GC -DDEBUG_LOG_GC -fsanitize=undefined
 DEBUG_OBJS = $(addprefix $(DEBUG_DIR)/,$(OBJS))
 DEBUG_DEPS = $(DEBUG_OBJS:.o=.d)
 DEBUG_TARGET = $(DEBUG_DIR)/$(TARGET)
 
 debug: $(DEBUG_TARGET)
-
-gc-debug: $(FULL_DEBUG_TARGET)
-
-$(FULL_DEBUG_TARGET): $(DEBUG_OBJS)
-	$(CC) $(FULL_DEBUG_CFLAGS) -o $@ $(DEBUG_OBJS)
 
 $(DEBUG_TARGET): $(DEBUG_OBJS)
 	$(CC) $(DEBUG_CFLAGS) -o $@ $(DEBUG_OBJS)
@@ -88,6 +82,27 @@ $(DEBUG_DIR)/%.o: %.c | $(DEBUG_DIR)
 	$(CC) $(DEBUG_CFLAGS) -c $< -o $@
 
 $(DEBUG_DIR):
+	mkdir -p $@
+
+# GC debug build: the debug build plus DEBUG_STRESS_GC (collect on every
+# allocation) and DEBUG_LOG_GC (log allocations/marking/freeing), in
+# build/gc-debug. It has its own directory so its objects, built with different
+# -D flags, never get mixed up with the plain debug build's.
+GC_DEBUG_DIR = build/gc-debug
+GC_DEBUG_CFLAGS = $(DEBUG_CFLAGS) -DDEBUG_STRESS_GC -DDEBUG_LOG_GC
+GC_DEBUG_OBJS = $(addprefix $(GC_DEBUG_DIR)/,$(OBJS))
+GC_DEBUG_DEPS = $(GC_DEBUG_OBJS:.o=.d)
+GC_DEBUG_TARGET = $(GC_DEBUG_DIR)/$(TARGET)
+
+gc-debug: $(GC_DEBUG_TARGET)
+
+$(GC_DEBUG_TARGET): $(GC_DEBUG_OBJS)
+	$(CC) $(GC_DEBUG_CFLAGS) -o $@ $(GC_DEBUG_OBJS)
+
+$(GC_DEBUG_DIR)/%.o: %.c | $(GC_DEBUG_DIR)
+	$(CC) $(GC_DEBUG_CFLAGS) -c $< -o $@
+
+$(GC_DEBUG_DIR):
 	mkdir -p $@
 
 # Run the fib benchmark against the release build.
@@ -120,6 +135,6 @@ format:
 # like "main.o: main.c chunk.h common.h", so editing a header now correctly
 # forces the dependent .o files to rebuild. The leading '-' means "don't error
 # if the .d files don't exist yet" (e.g. on the very first build).
--include $(DEV_DEPS) $(RELEASE_DEPS) $(DEBUG_DEPS)
+-include $(DEV_DEPS) $(RELEASE_DEPS) $(DEBUG_DEPS) $(GC_DEBUG_DEPS)
 
-.PHONY: dev clean format release bench debug
+.PHONY: dev clean format release bench debug gc-debug

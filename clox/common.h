@@ -23,4 +23,7 @@
 
 #define UINT8_COUNT (UINT8_MAX + 1)
 
+// Used to quiet compiler warnings about unused variables.
+#define UNUSED(x) ((void)(x))
+
 #endif

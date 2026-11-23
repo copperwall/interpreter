@@ -142,12 +142,13 @@ static void blackenObject(Obj *object) {
   case OBJ_UPVALUE:
     markValue(((ObjUpvalue *)object)->closed);
     break;
-  case OBJ_FUNCTION:
+  case OBJ_FUNCTION: {
     ObjFunction *function = (ObjFunction *)object;
     markObject((Obj *)function->name);
     markArray(&function->chunk.constants);
     break;
-  case OBJ_CLOSURE:
+  }
+  case OBJ_CLOSURE: {
     // Mark function
     // Mark all upvalues
     ObjClosure *closure = (ObjClosure *)object;
@@ -156,6 +157,7 @@ static void blackenObject(Obj *object) {
       markObject((Obj *)closure->upvalues[i]);
     }
     break;
+  }
   case OBJ_CLASS: {
     ObjClass *klass = (ObjClass *)object;
     markObject((Obj *)klass->name);

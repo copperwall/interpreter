@@ -18,6 +18,9 @@
 VM vm;
 
 static Value clockNative(int argCount, Value *args) {
+  UNUSED(argCount);
+  UNUSED(args);
+
   return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
@@ -103,7 +106,7 @@ static bool callValue(Value callee, uint8_t numArgs) {
 
       // Need to create a new instance and push it onto the stack.
       ObjInstance *instance = newInstance(klass);
-      vm.stackTop[-numArgs - 1] = OBJ_VAL(newInstance(klass));
+      vm.stackTop[-numArgs - 1] = OBJ_VAL(instance);
       return true;
     }
     default:

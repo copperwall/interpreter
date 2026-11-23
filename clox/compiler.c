@@ -184,6 +184,7 @@ static ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence prec);
 
 static void binary(bool canAssign) {
+  UNUSED(canAssign);
   // Left is already parsed, and its operations are on the stack and bytecode
   // has already been written operator was just parsed
 
@@ -285,9 +286,6 @@ static uint8_t makeConstant(Value value) {
 }
 
 static void emitConstant(Value value) {
-  // emit OP_CONSTANT with index of new constant.
-  uint8_t index = 0;
-
   emitBytes(OP_CONSTANT, makeConstant(value));
 }
 
@@ -318,6 +316,7 @@ static void patchJump(int offset) {
 }
 
 static void number(bool canAssign) {
+  UNUSED(canAssign);
   double value = strtod(parser.previous.start, NULL);
 #ifdef EXTREME_PARSER_TRACE
   printf("Parse number: %f\n", value);
@@ -373,6 +372,7 @@ static void parsePrecedence(Precedence prec) {
 }
 
 static void unary(bool canAssign) {
+  UNUSED(canAssign);
   TokenType operatorType = parser.previous.type;
 
 #ifdef EXTREME_PARSER_TRACE
@@ -398,6 +398,7 @@ static void unary(bool canAssign) {
 }
 
 static void grouping(bool canAssign) {
+  UNUSED(canAssign);
 #ifdef EXTREME_PARSER_TRACE
   printf("Grouping\n");
 #endif
@@ -431,6 +432,7 @@ static uint8_t argumentList() {
 
 // OP_CALL just single arg which is the number of arguments.
 static void call(bool canAssign) {
+  UNUSED(canAssign);
   uint8_t numArguments = argumentList();
   emitBytes(OP_CALL, numArguments);
 }
@@ -580,6 +582,7 @@ static void variable(bool canAssign) {
 
 // Evaluate left value, if false jump
 static void and_(bool canAssign) {
+  UNUSED(canAssign);
   // we've already parsed the first expression and the and keyword
 
   // jmp if not false
@@ -591,6 +594,7 @@ static void and_(bool canAssign) {
 }
 
 static void or_(bool canAssign) {
+  UNUSED(canAssign);
   // we've already parsed the first expression and the and keyword
 
   // true || false, if the value is true jump to end
@@ -607,6 +611,7 @@ static void or_(bool canAssign) {
 }
 
 static void literal(bool canAssign) {
+  UNUSED(canAssign);
   switch (parser.previous.type) {
   case TOKEN_NIL:
     emitByte(OP_NIL);
@@ -623,6 +628,7 @@ static void literal(bool canAssign) {
 }
 
 static void string(bool canAssign) {
+  UNUSED(canAssign);
   // previous token is a whole string token.
   // token has a start and a length, which includes leading and trailing '"'
 

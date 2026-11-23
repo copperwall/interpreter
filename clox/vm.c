@@ -106,6 +106,8 @@ static bool callValue(Value callee, uint8_t numArgs) {
 
       // Need to create a new instance and push it onto the stack.
       ObjInstance *instance = newInstance(klass);
+
+      // place the instance value for the class on the stack
       vm.stackTop[-numArgs - 1] = OBJ_VAL(instance);
       return true;
     }
@@ -385,6 +387,43 @@ static InterpretResult run() {
       uint8_t slot = READ_BYTE();
 
       *frame->closure->upvalues[slot]->location = peek(0);
+      break;
+    }
+    case OP_GET_PROPERTY: {
+      if (!IS_INSTANCE(peek(0))) {
+        runtimeError("Expected get access on class instance");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+      // Operand is index for constant
+      // instance value is on stack
+      ObjInstance *instance = AS_INSTANCE(peek(0));
+      ObjString *name = READ_STRING();
+
+      Value value;
+
+      if (tableGet(&instance->fields, name, &value)) {
+        pop();
+        push(value);
+        break;
+      }
+
+      // If field is missing, runtime error
+      runtimeError("Undefined property '%s'", name->chars);
+      return INTERPRET_RUNTIME_ERROR;
+    }
+    case OP_SET_PROPERTY: {
+      if (!IS_INSTANCE(peek(1))) {
+        runtimeError("Expected set access on class instance");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+      ObjInstance *instance = AS_INSTANCE(peek(1));
+      ObjString *name = READ_STRING();
+
+      Value value = pop();
+      tableSet(&instance->fields, name, value);
+
+      pop();
+      push(value);
       break;
     }
     case OP_POP: {

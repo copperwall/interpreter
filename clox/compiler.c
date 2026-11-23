@@ -638,13 +638,34 @@ static void string(bool canAssign) {
   emitConstant(str);
 }
 
+static void dot(bool canAssign) {
+  // left side has already been parsed and emitted
+  // TOKEN_DOT has already been consumed
+
+  // right hand needs to be token identifier
+  consume(TOKEN_IDENTIFIER, "Expected identifier after '.'");
+
+  uint8_t name = identifierConstant(&parser.previous);
+
+  if (canAssign && match(TOKEN_EQUAL)) {
+    // consume '=' and parse expression
+    expression();
+    // Operand is name index, expects instance on the stack
+    emitBytes(OP_SET_PROPERTY, name);
+  } else {
+    // emit instruction to get name
+    // Operand is name index, expects instance on the stack
+    emitBytes(OP_GET_PROPERTY, name);
+  }
+}
+
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
-    [TOKEN_DOT] = {NULL, NULL, PREC_NONE},
+    [TOKEN_DOT] = {NULL, dot, PREC_CALL},
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
     [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},

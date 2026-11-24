@@ -65,6 +65,10 @@ typedef struct Compiler {
   int scopeDepth;
 } Compiler;
 
+typedef struct ClassCompiler {
+  struct ClassCompiler *enclosing;
+} ClassCompiler;
+
 typedef struct {
   Token current;
   Token previous;
@@ -74,7 +78,7 @@ typedef struct {
 
 Parser parser;
 Compiler *current = NULL;
-Chunk *compilingChunk;
+ClassCompiler *currentClass = NULL;
 
 static Chunk *currentChunk() { return &current->function->chunk; }
 
@@ -621,6 +625,12 @@ static void or_(bool canAssign) {
 
 static void this_(bool isAssign) {
   UNUSED(isAssign);
+
+  if (currentClass == NULL) {
+    error("Can't use 'this' outside of a class.");
+    return;
+  }
+
   variable(false);
 }
 
@@ -941,6 +951,10 @@ static void classDeclaration() {
   emitBytes(OP_CLASS, nameConstant);
   defineVariable(nameConstant);
 
+  ClassCompiler classCompiler;
+  classCompiler.enclosing = currentClass;
+  currentClass = &classCompiler;
+
   // emit a GET_LOCAL/GET_GLOBAL to place the class
   namedVariable(className, false);
   consume(TOKEN_LEFT_BRACE, "Expected '{' after class name.");
@@ -952,6 +966,8 @@ static void classDeclaration() {
   consume(TOKEN_RIGHT_BRACE, "Expected '}' after class name.");
   // We need to pop the ObjClass from the namedVariable call.
   emitByte(OP_POP);
+
+  currentClass = currentClass->enclosing;
 }
 
 static void declaration() {

@@ -111,6 +111,13 @@ static bool callValue(Value callee, uint8_t numArgs) {
       vm.stackTop[-numArgs - 1] = OBJ_VAL(instance);
       return true;
     }
+    case OBJ_BOUND_METHOD: {
+      ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
+
+      // Place "this" value in the reserved 0th local value for the method.
+      vm.stackTop[-numArgs - 1] = bound->receiver;
+      return call(bound->method, numArgs);
+    }
     default:
       break;
     }
@@ -176,6 +183,32 @@ static void closeUpvalues(Value *last) {
     upvalue->location = &upvalue->closed;
     vm.openUpvalues = upvalue->next;
   }
+}
+
+// top of stack is the method value.
+// second to top is ObjClass
+static void defineMethod(ObjString *name) {
+  Value method = peek(0);
+  ObjClass *klass = AS_CLASS(peek(1));
+
+  tableSet(&klass->methods, name, method);
+  // Pop method value off stack, leave ObjClass for later methods.
+  pop();
+}
+
+static bool bindMethod(ObjClass *klass, ObjString *name) {
+  Value method;
+  if (!tableGet(&klass->methods, name, &method)) {
+    // May need runtime error if we want to keep returning NIL for missing
+    // field/method accesses.
+    return false;
+  }
+
+  ObjBoundMethod *boundMethod = newBoundMethod(peek(0), AS_CLOSURE(method));
+  pop();
+  push(OBJ_VAL(boundMethod));
+
+  return true;
 }
 
 static void concatenate() {
@@ -404,6 +437,8 @@ static InterpretResult run() {
       if (tableGet(&instance->fields, name, &value)) {
         pop();
         push(value);
+      } else if (bindMethod(instance->klass, name)) {
+        // bindMethod worked.
       } else {
         pop();
         push(NIL_VAL);
@@ -548,6 +583,10 @@ static InterpretResult run() {
       ObjString *name = READ_STRING();
       push(OBJ_VAL(newClass(name)));
 
+      break;
+    }
+    case OP_METHOD: {
+      defineMethod(READ_STRING());
       break;
     }
     default: {

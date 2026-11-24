@@ -48,6 +48,7 @@ typedef struct {
 
 typedef enum {
   TYPE_FUNCTION,
+  TYPE_METHOD,
   // This is for compiling top-level code, not a function.
   // Compiler always has a ObjFunction reference, so it's helpful to distinguish
   TYPE_SCRIPT
@@ -97,6 +98,14 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   local->name.start = "";
   local->name.length = 0;
   local->isCaptured = false;
+
+  if (type != TYPE_FUNCTION) {
+    local->name.start = "this";
+    local->name.length = 4;
+  } else {
+    local->name.start = "";
+    local->name.length = 0;
+  }
 }
 
 // "[line <line>] Error at <token>: <message>"
@@ -610,6 +619,11 @@ static void or_(bool canAssign) {
   patchJump(endJump);
 }
 
+static void this_(bool isAssign) {
+  UNUSED(isAssign);
+  variable(false);
+}
+
 static void literal(bool canAssign) {
   UNUSED(canAssign);
   switch (parser.previous.type) {
@@ -716,7 +730,7 @@ ParseRule rules[] = {
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
     [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
-    [TOKEN_THIS] = {NULL, NULL, PREC_NONE},
+    [TOKEN_THIS] = {this_, NULL, PREC_NONE},
     [TOKEN_TRUE] = {literal, NULL, PREC_NONE},
     [TOKEN_VAR] = {NULL, NULL, PREC_NONE},
     [TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
@@ -904,8 +918,22 @@ static void funDeclaration() {
   defineVariable(global);
 }
 
+static void method() {
+  consume(TOKEN_IDENTIFIER, "Expected method name.");
+  uint8_t constant = identifierConstant(&parser.previous);
+
+  FunctionType type = TYPE_METHOD;
+  function(type);
+  // OP_METHOD has a constant operand for the method name
+  // top of the stack is the ObjClosure from the OP_CLOSURE instruction emitted
+  // in function() above. next in the stack is the ObjClass, which
+  // classDeclaration adds via namedVariable().
+  emitBytes(OP_METHOD, constant);
+}
+
 static void classDeclaration() {
   consume(TOKEN_IDENTIFIER, "Expect class name.");
+  Token className = parser.previous;
 
   uint8_t nameConstant = identifierConstant(&parser.previous);
   declareVariable();
@@ -913,8 +941,17 @@ static void classDeclaration() {
   emitBytes(OP_CLASS, nameConstant);
   defineVariable(nameConstant);
 
+  // emit a GET_LOCAL/GET_GLOBAL to place the class
+  namedVariable(className, false);
   consume(TOKEN_LEFT_BRACE, "Expected '{' after class name.");
+
+  while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+    method();
+  }
+
   consume(TOKEN_RIGHT_BRACE, "Expected '}' after class name.");
+  // We need to pop the ObjClass from the namedVariable call.
+  emitByte(OP_POP);
 }
 
 static void declaration() {

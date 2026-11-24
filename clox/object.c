@@ -61,9 +61,19 @@ ObjUpvalue *newUpvalue(Value *slot) {
   return upvalue;
 }
 
+ObjBoundMethod *newBoundMethod(Value receiver, ObjClosure *method) {
+  ObjBoundMethod *boundMethod = ALLOCATE_OBJ(ObjBoundMethod, OBJ_BOUND_METHOD);
+
+  boundMethod->receiver = receiver;
+  boundMethod->method = method;
+
+  return boundMethod;
+}
+
 ObjClass *newClass(ObjString *name) {
   ObjClass *klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
   klass->name = name;
+  initTable(&klass->methods);
 
   return klass;
 }
@@ -162,6 +172,9 @@ void printObject(Value value) {
     break;
   case OBJ_CLOSURE:
     printFunction(AS_CLOSURE(value)->function);
+    break;
+  case OBJ_BOUND_METHOD:
+    printFunction(AS_BOUND_METHOD(value)->method->function);
     break;
   case OBJ_UPVALUE:
     printf("upvalue");

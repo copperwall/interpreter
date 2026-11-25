@@ -255,7 +255,6 @@ void collectGarbage() {
   markRoots();
   traceReferences();
   tableRemoveWhite(&vm.strings);
-  return;
   sweep();
 
   vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;

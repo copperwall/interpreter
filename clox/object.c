@@ -32,6 +32,7 @@ static Obj *allocateObject(size_t size, ObjType type) {
 ObjFunction *newFunction() {
   ObjFunction *objFunction = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
   objFunction->arity = 0;
+  objFunction->upvalueCount = 0;
   objFunction->name = NULL;
   initChunk(&objFunction->chunk);
 

@@ -606,6 +606,21 @@ static InterpretResult run() {
       frame = &vm.frames[vm.frameCount - 1];
       break;
     }
+    case OP_SUPER_INVOKE: {
+      // OP_SUPER_INVOKE <name constant> <numArgs>
+      // top of stack is super value, which should be an ObjClass *
+      ObjString *methodName = READ_STRING();
+      int numArgs = READ_BYTE();
+      ObjClass *superclass = AS_CLASS(pop());
+
+      if (!invokeFromClass(superclass, methodName, numArgs)) {
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      // Refresh cached frame pointer to point to top of callstack
+      frame = &vm.frames[vm.frameCount - 1];
+      break;
+    }
     case OP_CLOSURE: {
       // read byte
       ObjFunction *func = AS_FUNCTION(READ_CONSTANT());

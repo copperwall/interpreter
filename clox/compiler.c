@@ -170,10 +170,6 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
 }
 
 static void emitReturn() {
-  if (current->function->name != NULL) {
-    printf("Current type %s: %d\n", current->function->name->chars,
-           current->type);
-  }
   if (current->type == TYPE_INITIALIZER) {
     // This is the "this" reference when inside the function.
     emitBytes(OP_GET_LOCAL, 0);
@@ -655,6 +651,8 @@ static void this_(bool isAssign) {
 }
 
 static void super_(bool isAssign) {
+  UNUSED(isAssign);
+
   if (currentClass == NULL) {
     error("Can't use 'super' outside of a class.");
   } else if (!currentClass->hasSuperclass) {
@@ -667,8 +665,20 @@ static void super_(bool isAssign) {
   uint8_t name = identifierConstant(&parser.previous);
 
   namedVariable(syntheticToken("this"), false);
-  namedVariable(syntheticToken("super"), false);
-  emitBytes(OP_GET_SUPER, name);
+
+  if (match(TOKEN_LEFT_PAREN)) {
+    // optimize super method call
+    // We don't support field access on "super", so this should always be a
+    // method.
+    uint8_t numArgs = argumentList();
+    namedVariable(syntheticToken("super"), false);
+
+    emitBytes(OP_SUPER_INVOKE, name);
+    emitByte(numArgs);
+  } else {
+    namedVariable(syntheticToken("super"), false);
+    emitBytes(OP_GET_SUPER, name);
+  }
 }
 
 static void literal(bool canAssign) {

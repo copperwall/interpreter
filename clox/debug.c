@@ -160,6 +160,9 @@ int disassembleInstruction(Chunk *chunk, int offset) {
     return constantInstruction("OP_SET_PROPERTY", chunk, offset);
   case OP_GET_SUPER:
     return constantInstruction("OP_GET_SUPER", chunk, offset);
+  case OP_SUPER_INVOKE: {
+    return invokeInstruction("OP_SUPER_INVOKE", chunk, offset);
+  }
 
   default:
     printf("Unknown opcode %d\n", instruction);

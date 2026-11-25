@@ -44,6 +44,7 @@ typedef enum {
   OP_GET_DYN_PROPERTY,
   OP_SET_DYN_PROPERTY,
   OP_GET_SUPER,
+  OP_SUPER_INVOKE,
 } OpCode;
 
 // Kind of like a slice, autogrowing buffer of bytecode.

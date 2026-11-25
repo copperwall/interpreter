@@ -642,8 +642,37 @@ static InterpretResult run() {
 
       break;
     }
+    case OP_INHERIT: {
+      // Grab superclass off from -1 position
+      Value superclass = peek(1);
+
+      if (!IS_CLASS(superclass)) {
+        runtimeError("Superclass must be a class.");
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      ObjClass *klass = AS_CLASS(peek(0));
+
+      // Add all methods from superclass to new class.
+      tableAddAll(&AS_CLASS(superclass)->methods, &klass->methods);
+      // Pop the subclass (NOTE: Why not pop superclass too?)
+      pop();
+      break;
+    }
     case OP_METHOD: {
       defineMethod(READ_STRING());
+      break;
+    }
+    case OP_GET_SUPER: {
+      // OP_SUPER <constant for method name>
+      ObjString *method = READ_STRING();
+
+      ObjClass *superclass = AS_CLASS(pop());
+
+      if (!bindMethod(superclass, method)) {
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
       break;
     }
     default: {

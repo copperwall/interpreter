@@ -37,11 +37,13 @@ typedef enum {
   OP_CLOSURE,
   OP_CLOSE_UPVALUE,
   OP_CLASS,
+  OP_INHERIT,
   OP_METHOD,
   OP_GET_PROPERTY,
   OP_SET_PROPERTY,
   OP_GET_DYN_PROPERTY,
   OP_SET_DYN_PROPERTY,
+  OP_GET_SUPER,
 } OpCode;
 
 // Kind of like a slice, autogrowing buffer of bytecode.

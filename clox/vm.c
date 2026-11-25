@@ -109,6 +109,13 @@ static bool callValue(Value callee, uint8_t numArgs) {
 
       // place the instance value for the class on the stack
       vm.stackTop[-numArgs - 1] = OBJ_VAL(instance);
+
+      // Call init method if one exists on this class.
+      Value initMethod;
+      if (tableGet(&klass->methods, vm.initString, &initMethod)) {
+        return call(AS_CLOSURE(initMethod), numArgs);
+      }
+
       return true;
     }
     case OBJ_BOUND_METHOD: {
@@ -613,10 +620,17 @@ void initVM() {
   vm.grayCount = 0;
   vm.grayStack = NULL;
 
+  // Necessary so that garbage collection doesn't happen when creating the
+  // string, which would cause the markRoots function to try and mark
+  // vm.initString, which could be unitialized.
+  vm.initString = NULL;
+  vm.initString = copyString("init", 4);
+
   defineNative("clock", clockNative);
 }
 
 void freeVM() {
+  vm.initString = NULL;
   freeObjects();
   freeTable(&vm.globals);
   freeTable(&vm.strings);

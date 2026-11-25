@@ -49,6 +49,7 @@ typedef struct {
 typedef enum {
   TYPE_FUNCTION,
   TYPE_METHOD,
+  TYPE_INITIALIZER,
   // This is for compiling top-level code, not a function.
   // Compiler always has a ObjFunction reference, so it's helpful to distinguish
   TYPE_SCRIPT
@@ -88,13 +89,13 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   compiler->scopeDepth = 0;
   compiler->type = type;
   compiler->function = newFunction();
+  current = compiler;
 
-  if (type == TYPE_FUNCTION) {
+  if (type != TYPE_SCRIPT) {
     // Copy name into struct from the source/tokenizer.
     compiler->function->name =
         copyString(parser.previous.start, parser.previous.length);
   }
-  current = compiler;
 
   // Reserve the first slot in the locals list.
   Local *local = &current->locals[current->localCount++];
@@ -168,7 +169,16 @@ static void emitBytes(uint8_t byte1, uint8_t byte2) {
 }
 
 static void emitReturn() {
-  emitByte(OP_NIL);
+  if (current->function->name != NULL) {
+    printf("Current type %s: %d\n", current->function->name->chars,
+           current->type);
+  }
+  if (current->type == TYPE_INITIALIZER) {
+    // This is the "this" reference when inside the function.
+    emitBytes(OP_GET_LOCAL, 0);
+  } else {
+    emitByte(OP_NIL);
+  }
   emitByte(OP_RETURN);
 }
 
@@ -933,6 +943,10 @@ static void method() {
   uint8_t constant = identifierConstant(&parser.previous);
 
   FunctionType type = TYPE_METHOD;
+  if (parser.previous.length == 4 &&
+      memcmp(parser.previous.start, "init", 4) == 0) {
+    type = TYPE_INITIALIZER;
+  }
   function(type);
   // OP_METHOD has a constant operand for the method name
   // top of the stack is the ObjClosure from the OP_CLOSURE instruction emitted
@@ -1074,6 +1088,10 @@ static void returnStatement() {
   if (match(TOKEN_SEMICOLON)) {
     emitReturn();
   } else {
+    if (current->type == TYPE_INITIALIZER) {
+      error("Can't return a value from an initializer.");
+    }
+
     expression();
     consume(TOKEN_SEMICOLON, "Expected ';' after return expression.");
     emitByte(OP_RETURN);

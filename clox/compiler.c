@@ -686,6 +686,12 @@ static void dot(bool canAssign) {
     expression();
     // Operand is name index, expects instance on the stack
     emitBytes(OP_SET_PROPERTY, name);
+  } else if (match(TOKEN_LEFT_PAREN)) {
+    // Method call.
+    uint8_t argCount = argumentList();
+
+    emitBytes(OP_INVOKE, name);
+    emitByte(argCount);
   } else {
     // emit instruction to get name
     // Operand is name index, expects instance on the stack

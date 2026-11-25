@@ -243,6 +243,43 @@ static void concatenate() {
   // copy a then b and set null terminator
 }
 
+// This works because the stack will look like
+// [<receiver instance>, <arg 1>, <arg 2>, ...]
+// Methods already assume that the 0th value in their frame is the receiver
+// value, so we've set this up to match the calling convention.
+static bool invokeFromClass(ObjClass *klass, ObjString *name, int numArgs) {
+  Value method;
+  if (!tableGet(&klass->methods, name, &method)) {
+    runtimeError("Undefined property '%s'", name->chars);
+    return false;
+  }
+
+  return call(AS_CLOSURE(method), numArgs);
+}
+
+static bool invoke(ObjString *methodName, int numArgs) {
+  // method name and arg count are operands, NOT IN THE STACK
+  Value receiver = peek(numArgs);
+
+  if (!IS_INSTANCE(receiver)) {
+    runtimeError("Cannot invoke method on a non-instance value.");
+    return false;
+  }
+
+  ObjInstance *instance = AS_INSTANCE(receiver);
+
+  // Need to check if this is just a field, and not a method.
+  Value fieldFn;
+  if (tableGet(&instance->fields, methodName, &fieldFn)) {
+    // Call the function instead, need to set the 0th field as the fn value, not
+    // the receiver
+    vm.stackTop[-numArgs - 1] = fieldFn;
+    return callValue(fieldFn, numArgs);
+  }
+
+  return invokeFromClass(instance->klass, methodName, numArgs);
+}
+
 static InterpretResult run() {
   CallFrame *frame = &vm.frames[vm.frameCount - 1];
 #define READ_BYTE() (*frame->ip++)
@@ -553,6 +590,19 @@ static InterpretResult run() {
 
       // update local cached pointer, since callValue can
       // add a new CallFrame
+      frame = &vm.frames[vm.frameCount - 1];
+      break;
+    }
+    case OP_INVOKE: {
+      // OP_INVOKE <name constant> <numArgs>
+      ObjString *methodName = READ_STRING();
+      int numArgs = READ_BYTE();
+
+      if (!invoke(methodName, numArgs)) {
+        return INTERPRET_RUNTIME_ERROR;
+      }
+
+      // Refresh cached frame pointer to point to top of callstack
       frame = &vm.frames[vm.frameCount - 1];
       break;
     }

@@ -22,7 +22,9 @@ void freeTable(Table *table) {
 
 static Entry *findEntry(Entry *entries, int capacity, ObjString *key) {
   // Get hash off ObjString
-  uint32_t index = key->hash % capacity;
+  // % is slow, capacity is also a power of 2, so we can bitwise and key->hash
+  // with capacity - 1
+  uint32_t index = key->hash & (capacity - 1);
 
   // Goal is to note first tombstone
   // If we end up finding a true empty space, return tombstone as entry
@@ -45,7 +47,7 @@ static Entry *findEntry(Entry *entries, int capacity, ObjString *key) {
       return entry;
     }
 
-    index = (index + 1) % capacity;
+    index = (index + 1) & (capacity - 1);
   }
 }
 
@@ -144,7 +146,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
   if (table->count == 0)
     return NULL;
 
-  uint32_t index = hash % table->capacity;
+  uint32_t index = hash & (table->capacity - 1);
   for (;;) {
     Entry *entry = &table->entries[index];
 
@@ -159,7 +161,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
       return entry->key;
     }
 
-    index = (index + 1) % table->capacity;
+    index = (index + 1) & (table->capacity - 1);
   }
 }
 

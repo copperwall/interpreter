@@ -63,6 +63,29 @@ $(RELEASE_DIR)/%.o: %.c | $(RELEASE_DIR)
 $(RELEASE_DIR):
 	mkdir -p $@
 
+# Profiling build, in build/profile: optimized like release, but with symbols
+# and frame pointers so perf can attribute samples and walk the call stack.
+# No DEBUG_* tracing, so output stays the same as release.
+#   -g                       : debug symbols (function names, source lines)
+#   -fno-omit-frame-pointer  : keep frame pointers for cheap, accurate
+#                              `perf record -g` stack unwinding
+PROFILE_DIR = build/profile
+PROFILE_CFLAGS = $(RELEASE_CFLAGS) -g -fno-omit-frame-pointer
+PROFILE_OBJS = $(addprefix $(PROFILE_DIR)/,$(OBJS))
+PROFILE_DEPS = $(PROFILE_OBJS:.o=.d)
+PROFILE_TARGET = $(PROFILE_DIR)/$(TARGET)
+
+profile: $(PROFILE_TARGET)
+
+$(PROFILE_TARGET): $(PROFILE_OBJS)
+	$(CC) $(PROFILE_CFLAGS) -o $@ $(PROFILE_OBJS)
+
+$(PROFILE_DIR)/%.o: %.c | $(PROFILE_DIR)
+	$(CC) $(PROFILE_CFLAGS) -c $< -o $@
+
+$(PROFILE_DIR):
+	mkdir -p $@
+
 # Debug build with bytecode disassembly (DEBUG_PRINT_CODE) and VM execution
 # tracing (DEBUG_TRACE_EXECUTION) enabled, in build/debug.
 #   -fsanitize=undefined: UBSan, reports undefined behavior at runtime (e.g.
@@ -109,6 +132,38 @@ $(GC_DEBUG_DIR):
 bench: $(RELEASE_TARGET)
 	./$(RELEASE_TARGET) fib_timer.clox
 
+# perf binary. On WSL2 there's no linux-tools package matching the Microsoft
+# kernel, so the /usr/bin/perf wrapper refuses to run; use the generic
+# linux-tools binary directly if present, else whatever perf is on PATH.
+# Override with `make flamegraph PERF=/path/to/perf`.
+PERF ?= $(or $(lastword $(wildcard /usr/lib/linux-tools/*/perf)),$(shell command -v perf 2>/dev/null))
+
+# Program to profile and where to write the results. Override with e.g.
+# `make flamegraph PROFILE_SCRIPT=fib_timer.clox FLAMEGRAPH=fib.svg`.
+PROFILE_SCRIPT ?= bench.lox
+FLAMEGRAPH ?= $(basename $(notdir $(PROFILE_SCRIPT))).svg
+PERF_DATA = $(PROFILE_DIR)/perf.data
+
+# Run PROFILE_SCRIPT under perf with the profiling build and render a
+# flamegraph SVG with inferno (`cargo install inferno`).
+#   -F 999       : sample ~999 times per second
+#   -e cpu-clock : software timer event; WSL2 doesn't expose hardware counters,
+#                  so the default `cycles` event doesn't work there
+#   -g           : record call stacks (uses the profile build's frame pointers)
+flamegraph: $(PROFILE_TARGET)
+	@if [ -z "$(PERF)" ]; then \
+		echo "error: perf not found. Install linux-tools-generic or pass PERF=/path/to/perf." >&2; \
+		exit 1; \
+	fi
+	@command -v inferno-flamegraph >/dev/null || { \
+		echo "error: inferno not found. Install it with 'cargo install inferno'." >&2; \
+		exit 1; \
+	}
+	$(PERF) record -F 999 -e cpu-clock -g -o $(PERF_DATA) ./$(PROFILE_TARGET) $(PROFILE_SCRIPT)
+	$(PERF) script -i $(PERF_DATA) 2>/dev/null | inferno-collapse-perf | \
+		inferno-flamegraph --title "clox $(PROFILE_SCRIPT)" > $(FLAMEGRAPH)
+	@echo "Wrote $(FLAMEGRAPH)"
+
 # Remove build artifacts.
 clean:
 	rm -rf build
@@ -135,6 +190,6 @@ format:
 # like "main.o: main.c chunk.h common.h", so editing a header now correctly
 # forces the dependent .o files to rebuild. The leading '-' means "don't error
 # if the .d files don't exist yet" (e.g. on the very first build).
--include $(DEV_DEPS) $(RELEASE_DEPS) $(DEBUG_DEPS) $(GC_DEBUG_DEPS)
+-include $(DEV_DEPS) $(RELEASE_DEPS) $(PROFILE_DEPS) $(DEBUG_DEPS) $(GC_DEBUG_DEPS)
 
-.PHONY: dev clean format release bench debug gc-debug
+.PHONY: dev clean format release bench profile flamegraph debug gc-debug

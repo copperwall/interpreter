@@ -1,0 +1,248 @@
+// Sorting linked lists: merge sort, quicksort and insertion sort, all taking a
+// comparator closure. Uses a seeded linear congruential generator so the
+// output is deterministic.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+// Park-Miller "minimal standard" PRNG. Products stay below 2^53, so doubles
+// represent them exactly.
+class Random {
+  init(seed) { this.state = seed; }
+  next() {
+    this.state = mod(this.state * 16807, 2147483647);
+    return this.state;
+  }
+  below(n) { return floor(this.next() / 2147483647 * n); }
+}
+
+fun randomList(rng, count, limit) {
+  var out = nil;
+  for (var i = 0; i < count; i = i + 1) out = Cons(rng.below(limit), out);
+  return out;
+}
+
+fun length(list) {
+  var n = 0;
+  for (var p = list; p != nil; p = p.tail) n = n + 1;
+  return n;
+}
+
+fun show(list, limit) {
+  var s = "";
+  var i = 0;
+  for (var p = list; p != nil and i < limit; p = p.tail) {
+    if (s != "") s = s + " ";
+    s = s + str(p.head);
+    i = i + 1;
+  }
+  if (length(list) > limit) s = s + " ...";
+  return s;
+}
+
+fun isSorted(list, less) {
+  if (list == nil) return true;
+  for (var p = list; p.tail != nil; p = p.tail) {
+    if (less(p.tail.head, p.head)) return false;
+  }
+  return true;
+}
+
+fun sameElements(a, b) {
+  while (a != nil and b != nil) {
+    if (a.head != b.head) return false;
+    a = a.tail;
+    b = b.tail;
+  }
+  return a == nil and b == nil;
+}
+
+// --- Merge sort: O(n log n), stable. Recursion depth is log2(n), so it is
+// safe with the 64-frame VM. Split and merge are loops, not recursion.
+fun mergeSort(list, less) {
+  if (list == nil or list.tail == nil) return list;
+  // Find the middle with slow/fast pointers.
+  var slow = list;
+  var fast = list.tail;
+  while (fast != nil and fast.tail != nil) {
+    slow = slow.tail;
+    fast = fast.tail.tail;
+  }
+  var right = slow.tail;
+  slow.tail = nil;
+  return merge(mergeSort(list, less), mergeSort(right, less), less);
+}
+fun merge(a, b, less) {
+  var dummy = Cons(nil, nil);
+  var tail = dummy;
+  while (a != nil and b != nil) {
+    // Take from b only when strictly less: keeps equal elements in order.
+    if (less(b.head, a.head)) {
+      tail.tail = b;
+      b = b.tail;
+    } else {
+      tail.tail = a;
+      a = a.tail;
+    }
+    tail = tail.tail;
+  }
+  if (a != nil) tail.tail = a;
+  else tail.tail = b;
+  return dummy.tail;
+}
+
+// --- Quicksort: three-way partition around the head. Non-destructive.
+// Expected depth is O(log n) on random input.
+fun quickSort(list, less) {
+  if (list == nil or list.tail == nil) return list;
+  var pivot = list.head;
+  var lo = nil;
+  var eq = nil;
+  var hi = nil;
+  for (var p = list; p != nil; p = p.tail) {
+    if (less(p.head, pivot)) lo = Cons(p.head, lo);
+    else if (less(pivot, p.head)) hi = Cons(p.head, hi);
+    else eq = Cons(p.head, eq);
+  }
+  return append(quickSort(lo, less), append(eq, quickSort(hi, less)));
+}
+fun append(a, b) {
+  if (a == nil) return b;
+  var out = Cons(a.head, nil);
+  var tail = out;
+  for (var p = a.tail; p != nil; p = p.tail) {
+    tail.tail = Cons(p.head, nil);
+    tail = tail.tail;
+  }
+  tail.tail = b;
+  return out;
+}
+
+// --- Insertion sort: O(n^2), fine for small lists.
+fun insertionSort(list, less) {
+  var sorted = nil;
+  for (var p = list; p != nil; p = p.tail) {
+    var v = p.head;
+    if (sorted == nil or less(v, sorted.head)) {
+      sorted = Cons(v, sorted);
+    } else {
+      var cur = sorted;
+      while (cur.tail != nil and !less(v, cur.tail.head)) cur = cur.tail;
+      cur.tail = Cons(v, cur.tail);
+    }
+  }
+  return sorted;
+}
+
+fun copy(list) { return append(list, nil); }
+
+class Person {
+  init(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+}
+
+fun main() {
+  fun asc(a, b) { return a < b; }
+  fun desc(a, b) { return a > b; }
+
+  var rng = Random(42);
+  var xs = randomList(rng, 20, 100);
+  print "input:      " + show(xs, 20);
+  print "merge:      " + show(mergeSort(copy(xs), asc), 20);
+  print "quick:      " + show(quickSort(xs, asc), 20);
+  print "insertion:  " + show(insertionSort(xs, asc), 20);
+  print "descending: " + show(mergeSort(copy(xs), desc), 20);
+
+  // Sort by a derived key: distance from 50.
+  fun abs(x) { if (x < 0) return -x; return x; }
+  fun near50(a, b) { return abs(a - 50) < abs(b - 50); }
+  print "near 50:    " + show(mergeSort(copy(xs), near50), 20);
+
+  // Bigger input: check all three algorithms agree.
+  var big = randomList(rng, 1500, 10000);
+  var m = mergeSort(copy(big), asc);
+  var q = quickSort(big, asc);
+  print "";
+  print "1500 random numbers:";
+  print "  merge sorted?     " + (isSorted(m, asc) and "yes" or "no");
+  print "  quick sorted?     " + (isSorted(q, asc) and "yes" or "no");
+  print "  same result?      " + (sameElements(m, q) and "yes" or "no");
+  print "  length preserved? " + (length(m) == 1500 and "yes" or "no");
+  print "  smallest five:    " + show(m, 5);
+
+  // Stability: sort people by age; equal ages keep their input order.
+  var people = Cons(Person("Grace", 45), Cons(Person("Alan", 41),
+    Cons(Person("Ada", 36), Cons(Person("Edsger", 41),
+    Cons(Person("Barbara", 36), Cons(Person("Donald", 45), nil))))));
+  fun byAge(a, b) { return a.age < b.age; }
+  print "";
+  print "people by age (stable merge sort):";
+  for (var p = mergeSort(people, byAge); p != nil; p = p.tail) {
+    print "  " + str(p.head.age) + " " + p.head.name;
+  }
+}
+
+main();

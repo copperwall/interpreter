@@ -1,0 +1,221 @@
+// An event emitter (observer pattern). Subscribers can be plain closures with
+// private state, bound methods that remember their receiver, or one-shot
+// handlers. on() returns an unsubscribe closure.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+class Subscription {
+  init(handler, times) {
+    this.handler = handler;
+    this.remaining = times;   // nil = forever
+    this.active = true;
+  }
+}
+
+class Emitter {
+  init() { this.topics = nil; }   // assoc list: Cons(name, Cons(subs, nil))
+
+  _subs(event) {
+    for (var p = this.topics; p != nil; p = p.tail) {
+      if (p.head.head == event) return p.head;
+    }
+    var entry = Cons(event, nil);
+    this.topics = Cons(entry, this.topics);
+    return entry;
+  }
+
+  _add(event, handler, times) {
+    var entry = this._subs(event);
+    var sub = Subscription(handler, times);
+    // Append so handlers run in subscription order.
+    var node = Cons(sub, nil);
+    if (entry.tail == nil) {
+      entry.tail = node;
+    } else {
+      var p = entry.tail;
+      while (p.tail != nil) p = p.tail;
+      p.tail = node;
+    }
+    fun unsubscribe() { sub.active = false; }
+    return unsubscribe;
+  }
+
+  on(event, handler) { return this._add(event, handler, nil); }
+  once(event, handler) { return this._add(event, handler, 1); }
+
+  emit(event, payload) {
+    var entry = this._subs(event);
+    var count = 0;
+    for (var p = entry.tail; p != nil; p = p.tail) {
+      var sub = p.head;
+      if (sub.active) {
+        sub.handler(payload);
+        count = count + 1;
+        if (sub.remaining != nil) {
+          sub.remaining = sub.remaining - 1;
+          if (sub.remaining == 0) sub.active = false;
+        }
+      }
+    }
+    // Drop dead subscriptions.
+    var live = nil;
+    for (var p = entry.tail; p != nil; p = p.tail) if (p.head.active) live = Cons(p.head, live);
+    var ordered = nil;
+    for (var p = live; p != nil; p = p.tail) ordered = Cons(p.head, ordered);
+    entry.tail = ordered;
+    return count;
+  }
+
+  listenerCount(event) {
+    var n = 0;
+    for (var p = this._subs(event).tail; p != nil; p = p.tail) n = n + 1;
+    return n;
+  }
+}
+
+// A stock ticker that publishes price updates.
+class Quote {
+  init(symbol, price) {
+    this.symbol = symbol;
+    this.price = price;
+  }
+}
+
+class Ticker < Emitter {
+  init() {
+    super.init();
+    this.last = nil;
+  }
+  update(symbol, price) {
+    var q = Quote(symbol, price);
+    this.emit("quote", q);
+    if (this.last != nil and price < this.last * 0.9) this.emit("crash", q);
+    this.last = price;
+  }
+}
+
+// A subscriber object: its bound method is passed as the handler.
+class Logger {
+  init(prefix) {
+    this.prefix = prefix;
+    this.lines = 0;
+  }
+  log(q) {
+    this.lines = this.lines + 1;
+    print this.prefix + " #" + str(this.lines) + " " + q.symbol + " @ " + fixed(q.price, 2);
+  }
+}
+
+fun main() {
+  var ticker = Ticker();
+  var logger = Logger("[log]");
+
+  var stopLogging = ticker.on("quote", logger.log);
+
+  // A closure with private running-average state.
+  fun makeAverager() {
+    var total = 0;
+    var count = 0;
+    fun onQuote(q) {
+      total = total + q.price;
+      count = count + 1;
+      print "  avg of " + str(count) + " = " + fixed(total / count, 2);
+    }
+    return onQuote;
+  }
+  ticker.on("quote", makeAverager());
+
+  // Alert factory: each alert closes over its own threshold.
+  fun alertAbove(limit) {
+    fun check(q) {
+      if (q.price > limit) print "  ALERT: " + q.symbol + " above " + str(limit);
+    }
+    return check;
+  }
+  var stopHigh = ticker.on("quote", alertAbove(110));
+
+  fun firstQuote(q) { print "  (first quote ever seen: " + fixed(q.price, 2) + ")"; }
+  ticker.once("quote", firstQuote);
+
+  fun onCrash(q) { print "  !! CRASH: " + q.symbol + " fell to " + fixed(q.price, 2); }
+  ticker.on("crash", onCrash);
+
+  print "listeners on quote: " + str(ticker.listenerCount("quote"));
+  ticker.update("LOX", 100);
+  print "listeners after the once-handler fired: " + str(ticker.listenerCount("quote"));
+  ticker.update("LOX", 112.5);
+  ticker.update("LOX", 108.25);
+
+  print "-- unsubscribing the >110 alert and the logger --";
+  stopHigh();
+  stopLogging();
+  ticker.update("LOX", 120);
+  ticker.update("LOX", 95);   // >10% drop fires "crash"
+
+  print "logger saw " + str(logger.lines) + " quotes before unsubscribing";
+  print "handlers run for an event nobody listens to: " + str(ticker.emit("nothing", nil));
+}
+
+main();

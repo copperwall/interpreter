@@ -1,0 +1,26 @@
+== Every shape describes itself ==
+Circle: area=19.63 perimeter=15.71
+Circle: area=3.14 perimeter=6.28
+Rect: area=21.00 perimeter=20.00 (3x7)
+Square: area=16.00 perimeter=16.00 (4x4) [regular]
+Triangle: area=6.00 perimeter=12.00
+
+Total area: 65.78
+Largest:    Rect: area=21.00 perimeter=20.00 (3x7)
+
+== Sorted by area ==
+  Circle 3.14
+  Triangle 6.00
+  Square 16.00
+  Circle 19.63
+  Rect 21.00
+== Sorted by perimeter ==
+  Circle 6.28
+  Triangle 12.00
+  Circle 15.71
+  Square 16.00
+  Rect 20.00
+
+== Bound methods ==
+Square(10).area via bound method: 100
+after sq.w = 2: 20

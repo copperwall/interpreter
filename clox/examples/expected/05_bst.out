@@ -1,0 +1,30 @@
+inserted:   50 30 70 20 40 60 80 35 45 65 10 85
+in-order:   10 20 30 35 40 45 50 60 65 70 80 85
+pre-order:  50 30 20 10 40 35 45 70 60 65 80 85
+post-order: 10 20 35 45 40 30 65 60 85 80 70 50
+size=12 height=4 min=10 max=85
+contains 45? yes
+contains 55? no
+keys in [33, 66]: 6
+
+tree (sideways, root on the left):
+            85
+        80
+    70
+            65
+        60
+50
+            45
+        40
+            35
+    30
+        20
+            10
+
+after removing 10, 80, 30, 50:
+in-order:   20 35 40 45 60 65 70 85
+pre-order:  60 35 20 40 45 70 65 85
+size=8 height=4
+
+50 sorted inserts -> height 50 (unbalanced)
+sum of 1..50 via traversal: 1275

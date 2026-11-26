@@ -1,0 +1,56 @@
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------

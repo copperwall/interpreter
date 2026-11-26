@@ -1,0 +1,204 @@
+// Lambda calculus in Lox: booleans, numerals, pairs and arithmetic built from
+// nothing but closures, plus the Z combinator for recursion without names.
+// Every value below (until we convert back) is a function.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+// --- Church booleans: TRUE picks its first argument, FALSE its second. ----
+fun TRUE(a)  { fun pick(b) { return a; } return pick; }
+fun FALSE(a) { fun pick(b) { return b; } return pick; }
+fun NOT(p) { return p(FALSE)(TRUE); }
+fun AND(p) { fun withQ(q) { return p(q)(p); } return withQ; }
+fun OR(p)  { fun withQ(q) { return p(p)(q); } return withQ; }
+fun toBool(p) { return p(true)(false); }
+
+// --- Church numerals: n = apply f n times. --------------------------------
+fun ZERO(f) { fun apply(x) { return x; } return apply; }
+fun SUCC(n) {
+  fun withF(f) {
+    fun withX(x) { return f(n(f)(x)); }
+    return withX;
+  }
+  return withF;
+}
+fun ADD(m) {
+  fun withN(n) {
+    fun withF(f) {
+      fun withX(x) { return m(f)(n(f)(x)); }
+      return withX;
+    }
+    return withF;
+  }
+  return withN;
+}
+fun MUL(m) {
+  fun withN(n) {
+    fun withF(f) { return m(n(f)); }
+    return withF;
+  }
+  return withN;
+}
+// m^n is just "apply m, n times".
+fun POW(m) { fun withN(n) { return n(m); } return withN; }
+fun IS_ZERO(n) {
+  fun alwaysFalse(x) { return FALSE; }
+  return n(alwaysFalse)(TRUE);
+}
+
+// --- Pairs, and the famous predecessor via pairs. --------------------------
+fun PAIR(a) {
+  fun withB(b) {
+    fun select(s) { return s(a)(b); }
+    return select;
+  }
+  return withB;
+}
+fun FST(p) { return p(TRUE); }
+fun SND(p) { return p(FALSE); }
+// PRED n: start at (0, 0), step (a, b) -> (b, b+1) n times, take the first.
+fun PRED(n) {
+  fun step(p) { return PAIR(SND(p))(SUCC(SND(p))); }
+  return FST(n(step)(PAIR(ZERO)(ZERO)));
+}
+fun SUB(m) { fun withN(n) { return n(PRED)(m); } return withN; }
+fun LEQ(m) { fun withN(n) { return IS_ZERO(SUB(m)(n)); } return withN; }
+fun EQ(m) {
+  fun withN(n) { return AND(LEQ(m)(n))(LEQ(n)(m)); }
+  return withN;
+}
+
+// Conversion back to host numbers: apply "+1" to 0, n times.
+fun plusOne(x) { return x + 1; }
+fun toNum(n) { return n(plusOne)(0); }
+fun church(k) {
+  var n = ZERO;
+  for (var i = 0; i < k; i = i + 1) n = SUCC(n);
+  return n;
+}
+
+fun yn(b) { if (b) return "true"; return "false"; }
+
+// --- The Z combinator (strict Y): recursion without any function naming
+// itself. f receives "the function itself" as an argument.
+fun Z(f) {
+  fun g(x) {
+    fun delayed(v) { return x(x)(v); }
+    return f(delayed);
+  }
+  return g(g);
+}
+
+fun main() {
+  print "== booleans ==";
+  print "  NOT TRUE        = " + yn(toBool(NOT(TRUE)));
+  print "  AND TRUE FALSE  = " + yn(toBool(AND(TRUE)(FALSE)));
+  print "  OR FALSE TRUE   = " + yn(toBool(OR(FALSE)(TRUE)));
+  print "  NOT (AND T (OR F F)) = " + yn(toBool(NOT(AND(TRUE)(OR(FALSE)(FALSE)))));
+
+  var two = SUCC(SUCC(ZERO));
+  var three = SUCC(two);
+  var five = ADD(two)(three);
+  print "== numerals ==";
+  print "  2 + 3     = " + str(toNum(five));
+  print "  2 * 3     = " + str(toNum(MUL(two)(three)));
+  print "  2 ^ 5     = " + str(toNum(POW(two)(five)));
+  print "  3 ^ 3     = " + str(toNum(POW(three)(three)));
+  print "  pred 5    = " + str(toNum(PRED(five)));
+  print "  5 - 2     = " + str(toNum(SUB(five)(two)));
+  print "  2 - 5     = " + str(toNum(SUB(two)(five))) + "  (saturates at zero)";
+  print "  zero? 0   = " + yn(toBool(IS_ZERO(ZERO)));
+  print "  zero? 3   = " + yn(toBool(IS_ZERO(three)));
+  print "  3 <= 5    = " + yn(toBool(LEQ(three)(five)));
+  print "  5 == 2+3  = " + yn(toBool(EQ(five)(ADD(two)(three))));
+  print "  (2+3)*(2*3) = " + str(toNum(MUL(five)(MUL(two)(three))));
+
+  print "== Z combinator ==";
+  fun factStep(self) {
+    fun fact(n) {
+      if (n == 0) return 1;
+      return n * self(n - 1);
+    }
+    return fact;
+  }
+  var fact = Z(factStep);
+  print "  fact(10)  = " + str(fact(10));
+
+  fun fibStep(self) {
+    fun fib(n) {
+      if (n < 2) return n;
+      return self(n - 1) + self(n - 2);
+    }
+    return fib;
+  }
+  print "  fib(15)   = " + str(Z(fibStep)(15));
+
+  // Fully Church: factorial over Church numerals. Church IF is strict in
+  // Lox, so each branch is a thunk (a function of a dummy argument) and the
+  // chosen thunk is forced afterwards.
+  fun churchFactStep(self) {
+    fun fact(n) {
+      fun base(dummy) { return SUCC(ZERO); }
+      fun recur(dummy) { return MUL(n)(self(PRED(n))); }
+      return IS_ZERO(n)(base)(recur)(nil);
+    }
+    return fact;
+  }
+  print "  church fact(5) = " + str(toNum(Z(churchFactStep)(church(5))));
+}
+
+main();

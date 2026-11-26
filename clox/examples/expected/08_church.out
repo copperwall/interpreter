@@ -1,0 +1,22 @@
+== booleans ==
+  NOT TRUE        = false
+  AND TRUE FALSE  = false
+  OR FALSE TRUE   = true
+  NOT (AND T (OR F F)) = true
+== numerals ==
+  2 + 3     = 5
+  2 * 3     = 6
+  2 ^ 5     = 32
+  3 ^ 3     = 27
+  pred 5    = 4
+  5 - 2     = 3
+  2 - 5     = 0  (saturates at zero)
+  zero? 0   = true
+  zero? 3   = false
+  3 <= 5    = true
+  5 == 2+3  = true
+  (2+3)*(2*3) = 30
+== Z combinator ==
+  fact(10)  = 3628800
+  fib(15)   = 610
+  church fact(5) = 120

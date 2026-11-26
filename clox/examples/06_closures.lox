@@ -1,0 +1,222 @@
+// Closures: functions that capture and mutate variables from enclosing
+// scopes. Counters, generators, generator combinators, objects built purely
+// from closures, and the loop-variable capture gotcha.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+fun main() {
+  // --- Independent counters ------------------------------------------------
+  fun makeCounter(start, step) {
+    var n = start;
+    fun next() {
+      var current = n;
+      n = n + step;
+      return current;
+    }
+    return next;
+  }
+  var byOne = makeCounter(0, 1);
+  var byTen = makeCounter(100, 10);
+  print "== counters ==";
+  print "  " + str(byOne()) + " " + str(byOne()) + " " + str(byOne());
+  print "  " + str(byTen()) + " " + str(byTen());
+  print "  " + str(byOne()) + "  (byOne kept its own state)";
+
+  // --- Generators: a zero-arg closure that returns nil when exhausted -----
+  fun range(lo, hi) {
+    var i = lo;
+    fun next() {
+      if (i >= hi) return nil;
+      i = i + 1;
+      return i - 1;
+    }
+    return next;
+  }
+  fun fibs() {
+    var a = 0;
+    var b = 1;
+    fun next() {
+      var r = a;
+      var t = a + b;
+      a = b;
+      b = t;
+      return r;
+    }
+    return next;
+  }
+  // Combinators build new generators out of old ones.
+  fun mapGen(gen, f) {
+    fun next() {
+      var v = gen();
+      if (v == nil) return nil;
+      return f(v);
+    }
+    return next;
+  }
+  fun filterGen(gen, pred) {
+    fun next() {
+      var v = gen();
+      while (v != nil and !pred(v)) v = gen();
+      return v;
+    }
+    return next;
+  }
+  fun take(gen, n) {
+    var count = 0;
+    fun next() {
+      if (count >= n) return nil;
+      count = count + 1;
+      return gen();
+    }
+    return next;
+  }
+  fun join(gen) {
+    var out = "";
+    for (var v = gen(); v != nil; v = gen()) {
+      if (out != "") out = out + " ";
+      out = out + str(v);
+    }
+    return out;
+  }
+
+  fun square(x) { return x * x; }
+  fun isEven(x) { return mod(x, 2) == 0; }
+
+  print "== generators ==";
+  print "  range(0, 10):           " + join(range(0, 10));
+  print "  first 15 fibonacci:     " + join(take(fibs(), 15));
+  print "  squares of 1..10:       " + join(mapGen(range(1, 11), square));
+  print "  even fibs, first 8:     " + join(take(filterGen(fibs(), isEven), 8));
+  fun isOdd(x) { return !isEven(x); }
+  print "  odd squares (1..14):    " + join(filterGen(mapGen(range(1, 15), square), isOdd));
+
+  // --- Objects from closures: message passing ----------------------------
+  // An "object" is a dispatch function closed over private state. There is
+  // no way to reach `balance` except through the messages it understands.
+  // (Every message takes an amount, even unused, since Lox has no optional args.)
+  fun makeAccount(owner, balance) {
+    var history = 0;
+    fun dispatch(message, amount) {
+      if (message == "deposit") {
+        balance = balance + amount;
+        history = history + 1;
+        return balance;
+      }
+      if (message == "withdraw") {
+        if (amount > balance) return "insufficient funds";
+        balance = balance - amount;
+        history = history + 1;
+        return balance;
+      }
+      if (message == "balance") return balance;
+      if (message == "owner") return owner;
+      if (message == "transactions") return history;
+      return "unknown message " + message;
+    }
+    return dispatch;
+  }
+  var acct = makeAccount("ada", 100);
+  print "== message-passing account ==";
+  print "  deposit 50   -> " + str(acct("deposit", 50));
+  print "  withdraw 30  -> " + str(acct("withdraw", 30));
+  print "  withdraw 500 -> " + acct("withdraw", 500);
+  print "  " + acct("owner", nil) + " has " + str(acct("balance", nil)) + " after " +
+        str(acct("transactions", nil)) + " transactions";
+  print "  " + acct("fly", nil);
+
+  // --- Shared captured state ---------------------------------------------
+  // Two closures closing over the *same* variable see each other's writes.
+  fun makePair() {
+    var shared = 0;
+    fun inc() { shared = shared + 1; }
+    fun get() { return shared; }
+    class Pair {}
+    var p = Pair();
+    p.inc = inc;
+    p.get = get;
+    return p;
+  }
+  var p = makePair();
+  p.inc(); p.inc(); p.inc();
+  print "== shared upvalue ==";
+  print "  three incs through one closure, read through another: " + str(p.get());
+
+  // --- Loop-variable capture ------------------------------------------------
+  // In clox a `for` loop has ONE loop variable for the whole loop, so every
+  // closure created in the body captures the same slot.
+  var first; var second; var third;
+  for (var i = 0; i < 3; i = i + 1) {
+    fun f() { return i; }
+    if (i == 0) first = f;
+    if (i == 1) second = f;
+    if (i == 2) third = f;
+  }
+  print "== loop capture ==";
+  print "  captured loop var:  " + str(first()) + " " + str(second()) + " " + str(third());
+  // Fix: copy into a fresh local declared inside the body.
+  for (var i = 0; i < 3; i = i + 1) {
+    var j = i;
+    fun f() { return j; }
+    if (i == 0) first = f;
+    if (i == 1) second = f;
+    if (i == 2) third = f;
+  }
+  print "  copied into a local: " + str(first()) + " " + str(second()) + " " + str(third());
+}
+
+main();

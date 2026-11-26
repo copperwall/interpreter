@@ -1,0 +1,231 @@
+// The visitor pattern over a little file-system tree. Each node's accept()
+// calls back into the visitor (double dispatch), so new operations are added
+// as new visitor classes without touching File or Dir.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Node {
+  init(value, next) {
+    this.value = value;
+    this.next = next;
+  }
+}
+
+class File {
+  init(name, size) {
+    this.name = name;
+    this.size = size;
+  }
+  accept(visitor) { return visitor.visitFile(this); }
+}
+
+class Dir {
+  init(name) {
+    this.name = name;
+    this.children = nil;
+    this.last = nil;
+  }
+  // Appends keep insertion order. Returns this so calls can be chained.
+  add(child) {
+    var node = Node(child, nil);
+    if (this.last == nil) this.children = node;
+    else this.last.next = node;
+    this.last = node;
+    return this;
+  }
+  accept(visitor) { return visitor.visitDir(this); }
+}
+
+// Base visitor: visits every child of a directory. Subclasses override only
+// the hooks they care about.
+class Visitor {
+  visitFile(file) {}
+  visitDir(dir) {
+    for (var n = dir.children; n != nil; n = n.next) n.value.accept(this);
+  }
+}
+
+class TotalSize < Visitor {
+  init() { this.total = 0; }
+  visitFile(file) { this.total = this.total + file.size; }
+}
+
+class Counter < Visitor {
+  init() {
+    this.files = 0;
+    this.dirs = 0;
+  }
+  visitFile(file) { this.files = this.files + 1; }
+  visitDir(dir) {
+    this.dirs = this.dirs + 1;
+    super.visitDir(dir);
+  }
+}
+
+// Visitors can also return values: this one computes sizes bottom-up
+// without any mutable state on the visitor at all.
+class SizeOf {
+  visitFile(file) { return file.size; }
+  visitDir(dir) {
+    var sum = 0;
+    for (var n = dir.children; n != nil; n = n.next) sum = sum + n.value.accept(this);
+    return sum;
+  }
+}
+
+class Printer < Visitor {
+  init() {
+    this.indent = "";
+    this.sizer = SizeOf();
+  }
+  visitFile(file) { print this.indent + file.name + "  " + human(file.size); }
+  visitDir(dir) {
+    print this.indent + dir.name + "/  (" + human(dir.accept(this.sizer)) + ")";
+    var saved = this.indent;
+    this.indent = this.indent + "  ";
+    super.visitDir(dir);
+    this.indent = saved;
+  }
+}
+
+class Largest < Visitor {
+  init() {
+    this.best = nil;
+    this.path = "";
+    this.bestPath = "";
+  }
+  visitFile(file) {
+    if (this.best == nil or file.size > this.best.size) {
+      this.best = file;
+      this.bestPath = this.path + file.name;
+    }
+  }
+  visitDir(dir) {
+    var saved = this.path;
+    this.path = this.path + dir.name + "/";
+    super.visitDir(dir);
+    this.path = saved;
+  }
+}
+
+// Takes a predicate closure; collects matching paths.
+class Find < Visitor {
+  init(pred) {
+    this.pred = pred;
+    this.path = "";
+    this.found = nil;
+  }
+  visitFile(file) {
+    if (this.pred(file)) this.found = Node(this.path + file.name, this.found);
+  }
+  visitDir(dir) {
+    var saved = this.path;
+    this.path = this.path + dir.name + "/";
+    super.visitDir(dir);
+    this.path = saved;
+  }
+}
+
+fun human(bytes) {
+  if (bytes >= 1048576) return fixed(bytes / 1048576, 1) + " MB";
+  if (bytes >= 1024) return fixed(bytes / 1024, 1) + " KB";
+  return str(bytes) + " B";
+}
+
+fun main() {
+  var root = Dir("project")
+    .add(File("README.md", 2300))
+    .add(File("Makefile", 5120))
+    .add(Dir("src")
+      .add(File("main.c", 4100))
+      .add(File("vm.c", 24576))
+      .add(File("compiler.c", 31000))
+      .add(Dir("gen").add(File("tables.c", 900000))))
+    .add(Dir("bench")
+      .add(File("fib.lox", 210))
+      .add(File("flame.svg", 1572864)))
+    .add(Dir("empty"));
+
+  print "== Printer ==";
+  root.accept(Printer());
+
+  var total = TotalSize();
+  root.accept(total);
+  print "";
+  print "== TotalSize ==";
+  print "  " + str(total.total) + " bytes (" + human(total.total) + ")";
+
+  var counter = Counter();
+  root.accept(counter);
+  print "== Counter ==";
+  print "  " + str(counter.files) + " files in " + str(counter.dirs) + " directories";
+
+  var largest = Largest();
+  root.accept(largest);
+  print "== Largest ==";
+  print "  " + largest.bestPath + " " + human(largest.best.size);
+
+  var limit = 4096;
+  fun small(file) { return file.size < limit; }
+  var finder = Find(small);
+  root.accept(finder);
+  print "== Find(size < " + str(limit) + ") ==";
+  for (var n = finder.found; n != nil; n = n.next) print "  " + n.value;
+}
+
+main();

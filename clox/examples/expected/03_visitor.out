@@ -1,0 +1,24 @@
+== Printer ==
+project/  (2.4 MB)
+  README.md  2.2 KB
+  Makefile  5.0 KB
+  src/  (937.2 KB)
+    main.c  4.0 KB
+    vm.c  24.0 KB
+    compiler.c  30.3 KB
+    gen/  (878.9 KB)
+      tables.c  878.9 KB
+  bench/  (1.5 MB)
+    fib.lox  210 B
+    flame.svg  1.5 MB
+  empty/  (0 B)
+
+== TotalSize ==
+  2540170 bytes (2.4 MB)
+== Counter ==
+  8 files in 5 directories
+== Largest ==
+  project/bench/flame.svg 1.5 MB
+== Find(size < 4096) ==
+  project/bench/fib.lox
+  project/README.md

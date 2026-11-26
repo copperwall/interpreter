@@ -1,0 +1,33 @@
+== polynomial ==
+  f            = (((3 * (x * x)) + (2 * x)) + 1)
+  f'  (raw)    = ((((0 * (x * x)) + (3 * ((1 * x) + (x * 1)))) + ((0 * x) + (2 * 1))) + 0)
+  f'  (simple) = ((3 * (x + x)) + 2)
+  f(env)       = 17
+  f'(env)      = 14
+== two variables (d/dy) ==
+  f            = (((x * y) + (y * 4)) - 7)
+  f'  (raw)    = ((((0 * y) + (x * 1)) + ((1 * 4) + (y * 0))) - 0)
+  f'  (simple) = (x + 4)
+  f(env)       = 23
+  f'(env)      = 6
+== product rule ==
+  f            = ((x + 1) * (x - 1))
+  f'  (raw)    = (((1 + 0) * (x - 1)) + ((x + 1) * (1 - 0)))
+  f'  (simple) = ((x - 1) + (x + 1))
+  f(env)       = 3
+  f'(env)      = 4
+== negation ==
+  f            = -(x * (x * x))
+  f'  (raw)    = -((1 * (x * x)) + (x * ((1 * x) + (x * 1))))
+  f'  (simple) = -((x * x) + (x * (x + x)))
+  f(env)       = -8
+  f'(env)      = -12
+== constant folding ==
+  ((2 + 3) * (4 * (x + 0)))  =>  (20 * x)
+== successive derivatives of x^4 ==
+  d0 = ((x * x) * (x * x))
+  d1 = (((x + x) * (x * x)) + ((x * x) * (x + x)))
+  d2 = (((2 * (x * x)) + ((x + x) * (x + x))) + (((x + x) * (x + x)) + (2 * (x * x))))
+  d3 = (((2 * (x + x)) + ((2 * (x + x)) + (2 * (x + x)))) + (((2 * (x + x)) + (2 * (x + x))) + (2 * (x + x))))
+  d4 = 24
+  d5 = 0

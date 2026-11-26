@@ -1,0 +1,234 @@
+// A binary search tree with recursive insert/delete/traversals. Traversals
+// take a callback, and the callers use closures to accumulate results.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class TreeNode {
+  init(key) {
+    this.key = key;
+    this.left = nil;
+    this.right = nil;
+  }
+}
+
+class Tree {
+  init() { this.root = nil; }
+
+  insert(key) { this.root = this._insert(this.root, key); }
+  _insert(node, key) {
+    if (node == nil) return TreeNode(key);
+    if (key < node.key) node.left = this._insert(node.left, key);
+    else if (key > node.key) node.right = this._insert(node.right, key);
+    return node;
+  }
+
+  contains(key) {
+    var node = this.root;
+    while (node != nil) {
+      if (key == node.key) return true;
+      if (key < node.key) node = node.left;
+      else node = node.right;
+    }
+    return false;
+  }
+
+  remove(key) { this.root = this._remove(this.root, key); }
+  _remove(node, key) {
+    if (node == nil) return nil;
+    if (key < node.key) {
+      node.left = this._remove(node.left, key);
+    } else if (key > node.key) {
+      node.right = this._remove(node.right, key);
+    } else {
+      if (node.left == nil) return node.right;
+      if (node.right == nil) return node.left;
+      // Two children: replace with the in-order successor.
+      var succ = this._min(node.right);
+      node.key = succ.key;
+      node.right = this._remove(node.right, succ.key);
+    }
+    return node;
+  }
+
+  _min(node) {
+    while (node.left != nil) node = node.left;
+    return node;
+  }
+  min() { return this._min(this.root).key; }
+  max() {
+    var node = this.root;
+    while (node.right != nil) node = node.right;
+    return node.key;
+  }
+
+  height() { return this._height(this.root); }
+  _height(node) {
+    if (node == nil) return 0;
+    var l = this._height(node.left);
+    var r = this._height(node.right);
+    if (l > r) return l + 1;
+    return r + 1;
+  }
+
+  size() { return this._size(this.root); }
+  _size(node) {
+    if (node == nil) return 0;
+    return 1 + this._size(node.left) + this._size(node.right);
+  }
+
+  inOrder(fn) { this._in(this.root, fn); }
+  _in(node, fn) {
+    if (node == nil) return;
+    this._in(node.left, fn);
+    fn(node.key);
+    this._in(node.right, fn);
+  }
+
+  preOrder(fn) { this._pre(this.root, fn); }
+  _pre(node, fn) {
+    if (node == nil) return;
+    fn(node.key);
+    this._pre(node.left, fn);
+    this._pre(node.right, fn);
+  }
+
+  postOrder(fn) { this._post(this.root, fn); }
+  _post(node, fn) {
+    if (node == nil) return;
+    this._post(node.left, fn);
+    this._post(node.right, fn);
+    fn(node.key);
+  }
+
+  // Sideways ASCII drawing: right subtree on top.
+  draw() { this._draw(this.root, ""); }
+  _draw(node, indent) {
+    if (node == nil) return;
+    this._draw(node.right, indent + "    ");
+    print indent + str(node.key);
+    this._draw(node.left, indent + "    ");
+  }
+
+  // Count keys in [lo, hi], pruning subtrees that can't contain any.
+  countRange(lo, hi) { return this._range(this.root, lo, hi); }
+  _range(node, lo, hi) {
+    if (node == nil) return 0;
+    if (node.key < lo) return this._range(node.right, lo, hi);
+    if (node.key > hi) return this._range(node.left, lo, hi);
+    return 1 + this._range(node.left, lo, hi) + this._range(node.right, lo, hi);
+  }
+}
+
+// Turns a traversal into a string, using a closure that appends to `out`.
+fun collect(traversal) {
+  var out = "";
+  fun append(key) {
+    if (out != "") out = out + " ";
+    out = out + str(key);
+  }
+  traversal(append);
+  return out;
+}
+
+fun main() {
+  var tree = Tree();
+  var keys = "50 30 70 20 40 60 80 35 45 65 10 85";
+  tree.insert(50); tree.insert(30); tree.insert(70); tree.insert(20);
+  tree.insert(40); tree.insert(60); tree.insert(80); tree.insert(35);
+  tree.insert(45); tree.insert(65); tree.insert(10); tree.insert(85);
+  tree.insert(40);  // duplicate: ignored
+
+  print "inserted:   " + keys;
+  print "in-order:   " + collect(tree.inOrder);   // bound methods as values
+  print "pre-order:  " + collect(tree.preOrder);
+  print "post-order: " + collect(tree.postOrder);
+  print "size=" + str(tree.size()) + " height=" + str(tree.height()) +
+        " min=" + str(tree.min()) + " max=" + str(tree.max());
+  print "contains 45? " + (tree.contains(45) and "yes" or "no");
+  print "contains 55? " + (tree.contains(55) and "yes" or "no");
+  print "keys in [33, 66]: " + str(tree.countRange(33, 66));
+
+  print "";
+  print "tree (sideways, root on the left):";
+  tree.draw();
+
+  print "";
+  tree.remove(10);   // leaf
+  tree.remove(80);   // one child
+  tree.remove(30);   // two children
+  tree.remove(50);   // the root
+  print "after removing 10, 80, 30, 50:";
+  print "in-order:   " + collect(tree.inOrder);
+  print "pre-order:  " + collect(tree.preOrder);
+  print "size=" + str(tree.size()) + " height=" + str(tree.height());
+
+  // Degenerate case: sorted inserts make a linked list, height == size.
+  // (Kept under 60 because the VM allows only 64 call frames.)
+  var skewed = Tree();
+  for (var i = 1; i <= 50; i = i + 1) skewed.insert(i);
+  print "";
+  print "50 sorted inserts -> height " + str(skewed.height()) + " (unbalanced)";
+
+  // Sum with a closure accumulator.
+  var sum = 0;
+  fun add(k) { sum = sum + k; }
+  skewed.inOrder(add);
+  print "sum of 1..50 via traversal: " + str(sum);
+}
+
+main();

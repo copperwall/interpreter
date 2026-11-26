@@ -1,0 +1,21 @@
+input:      80 10 32 18 24 24 45 90 81 10 25 53 51 97 19 37 26 73 52 0
+merge:      0 10 10 18 19 24 24 25 26 32 37 45 51 52 53 73 80 81 90 97
+quick:      0 10 10 18 19 24 24 25 26 32 37 45 51 52 53 73 80 81 90 97
+insertion:  0 10 10 18 19 24 24 25 26 32 37 45 51 52 53 73 80 81 90 97
+descending: 97 90 81 80 73 53 52 51 45 37 32 26 25 24 24 19 18 10 10 0
+near 50:    51 52 53 45 37 32 73 26 25 24 24 80 81 19 18 10 90 10 97 0
+
+1500 random numbers:
+  merge sorted?     yes
+  quick sorted?     yes
+  same result?      yes
+  length preserved? yes
+  smallest five:    1 5 8 16 18 ...
+
+people by age (stable merge sort):
+  36 Ada
+  36 Barbara
+  41 Alan
+  41 Edsger
+  45 Grace
+  45 Donald

@@ -1,0 +1,366 @@
+// A tiny Forth-flavoured stack machine written in Lox, running on the clox VM.
+// Each instruction is an object with an exec(vm) method (dynamic dispatch
+// instead of a switch). Programs are built with a fluent assembler, and jump
+// targets are resolved to direct references to instruction nodes, so the
+// program counter is a pointer, not an index (threaded code).
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+// ---- Instructions -----------------------------------------------------------
+class Instr {
+  isLabel() { return false; }
+  resolve(labels) {}
+  name() { return "?"; }
+}
+class Push < Instr {
+  init(n) { this.n = n; }
+  exec(vm) { vm.push(this.n); }
+  name() { return "push " + str(this.n); }
+}
+// Arithmetic shares one implementation; subclasses give the operation.
+class BinOp < Instr {
+  exec(vm) {
+    var b = vm.pop();
+    var a = vm.pop();
+    vm.push(this.apply(a, b));
+  }
+}
+class AddI < BinOp { apply(a, b) { return a + b; } name() { return "add"; } }
+class SubI < BinOp { apply(a, b) { return a - b; } name() { return "sub"; } }
+class MulI < BinOp { apply(a, b) { return a * b; } name() { return "mul"; } }
+class ModI < BinOp { apply(a, b) { return mod(a, b); } name() { return "mod"; } }
+class LtI < BinOp {
+  apply(a, b) { if (a < b) return 1; return 0; }
+  name() { return "lt"; }
+}
+class Dup < Instr {
+  exec(vm) { var a = vm.pop(); vm.push(a); vm.push(a); }
+  name() { return "dup"; }
+}
+class Drop < Instr { exec(vm) { vm.pop(); } name() { return "drop"; } }
+class Swap < Instr {
+  exec(vm) { var b = vm.pop(); var a = vm.pop(); vm.push(b); vm.push(a); }
+  name() { return "swap"; }
+}
+class Over < Instr {
+  exec(vm) { var b = vm.pop(); var a = vm.pop(); vm.push(a); vm.push(b); vm.push(a); }
+  name() { return "over"; }
+}
+class Store < Instr {
+  init(v) { this.v = v; }
+  exec(vm) { vm.set(this.v, vm.pop()); }
+  name() { return "store " + this.v; }
+}
+class Load < Instr {
+  init(v) { this.v = v; }
+  exec(vm) { vm.push(vm.get(this.v)); }
+  name() { return "load " + this.v; }
+}
+class Emit < Instr {
+  exec(vm) {
+    if (vm.out != "") vm.out = vm.out + " ";
+    vm.out = vm.out + str(vm.pop());
+  }
+  name() { return "emit"; }
+}
+class Cr < Instr {
+  exec(vm) {
+    print "  " + vm.out;
+    vm.out = "";
+  }
+  name() { return "cr"; }
+}
+class Label < Instr {
+  init(label) { this.label = label; }
+  exec(vm) {}
+  isLabel() { return true; }
+  name() { return this.label + ":"; }
+}
+// Anything with a target: resolve() swaps the label name for the node.
+class Branch < Instr {
+  init(label) {
+    this.label = label;
+    this.target = nil;
+  }
+  resolve(labels) {
+    for (var p = labels; p != nil; p = p.tail) {
+      if (p.head.label == this.label) this.target = p.head.node;
+    }
+    if (this.target == nil) print "undefined label " + this.label;
+  }
+}
+class Jump < Branch {
+  exec(vm) { vm.pc = this.target; }
+  name() { return "jmp " + this.label; }
+}
+class JumpIfZero < Branch {
+  exec(vm) { if (vm.pop() == 0) vm.pc = this.target; }
+  name() { return "jz " + this.label; }
+}
+class Call < Branch {
+  exec(vm) {
+    vm.rstack = Cons(vm.pc, vm.rstack);
+    vm.pc = this.target;
+  }
+  name() { return "call " + this.label; }
+}
+class Ret < Instr {
+  exec(vm) {
+    vm.pc = vm.rstack.head;
+    vm.rstack = vm.rstack.tail;
+  }
+  name() { return "ret"; }
+}
+class Halt < Instr {
+  exec(vm) { vm.running = false; }
+  name() { return "halt"; }
+}
+
+// ---- Assembler: every method returns `this` for chaining. -------------------
+class LabelEntry {
+  init(label, node) {
+    this.label = label;
+    this.node = node;
+  }
+}
+// The top-level script chunk only has room for 256 constants, and every
+// method name and global reference uses one (they aren't deduplicated).
+// Classes are first-class values, so Asm is declared inside a function -- whose
+// chunk has its own constant table -- and returned.
+fun defineAsm() {
+  class Asm {
+    init() {
+      this.first = nil;
+      this.last = nil;
+      this.count = 0;
+    }
+    emit(instr) {
+      var node = Cons(instr, nil);
+      if (this.first == nil) this.first = node;
+      else this.last.tail = node;
+      this.last = node;
+      this.count = this.count + 1;
+      return this;
+    }
+    push(n) { return this.emit(Push(n)); }
+    add() { return this.emit(AddI()); }
+    sub() { return this.emit(SubI()); }
+    mul() { return this.emit(MulI()); }
+    mod() { return this.emit(ModI()); }
+    lt() { return this.emit(LtI()); }
+    dup() { return this.emit(Dup()); }
+    drop() { return this.emit(Drop()); }
+    swap() { return this.emit(Swap()); }
+    over() { return this.emit(Over()); }
+    store(v) { return this.emit(Store(v)); }
+    load(v) { return this.emit(Load(v)); }
+    out() { return this.emit(Emit()); }
+    cr() { return this.emit(Cr()); }
+    label(l) { return this.emit(Label(l)); }
+    jmp(l) { return this.emit(Jump(l)); }
+    jz(l) { return this.emit(JumpIfZero(l)); }
+    call(l) { return this.emit(Call(l)); }
+    ret() { return this.emit(Ret()); }
+    halt() { return this.emit(Halt()); }
+
+    // Two passes: collect label nodes, then point branches at them.
+    link() {
+      var labels = nil;
+      for (var p = this.first; p != nil; p = p.tail) {
+        if (p.head.isLabel()) labels = Cons(LabelEntry(p.head.label, p), labels);
+      }
+      for (var p = this.first; p != nil; p = p.tail) p.head.resolve(labels);
+      return this.first;
+    }
+
+    listing() {
+      for (var p = this.first; p != nil; p = p.tail) {
+        if (p.head.isLabel()) print "  " + p.head.name();
+        else print "      " + p.head.name();
+      }
+    }
+  }
+  return Asm;
+}
+var Asm = defineAsm();
+
+// ---- The machine ----------------------------------------------------------
+class Machine {
+  init() {
+    this.stack = nil;
+    this.rstack = nil;
+    this.vars = nil;
+    this.out = "";
+    this.steps = 0;
+  }
+  push(v) { this.stack = Cons(v, this.stack); }
+  pop() {
+    var v = this.stack.head;
+    this.stack = this.stack.tail;
+    return v;
+  }
+  set(name, value) {
+    for (var p = this.vars; p != nil; p = p.tail) {
+      if (p.head.head == name) {
+        p.head.tail = value;
+        return;
+      }
+    }
+    this.vars = Cons(Cons(name, value), this.vars);
+  }
+  get(name) {
+    for (var p = this.vars; p != nil; p = p.tail) if (p.head.head == name) return p.head.tail;
+    return nil;
+  }
+  run(program) {
+    this.pc = program;
+    this.running = true;
+    while (this.running and this.pc != nil) {
+      var instr = this.pc.head;
+      this.pc = this.pc.tail;   // advance first; jumps overwrite it
+      instr.exec(this);
+      this.steps = this.steps + 1;
+    }
+    return this;
+  }
+}
+
+fun runProgram(title, asm) {
+  print "== " + title + " (" + str(asm.count) + " instructions) ==";
+  var vm = Machine().run(asm.link());
+  print "  -- " + str(vm.steps) + " steps executed";
+}
+
+fun main() {
+  // factorial(10), keeping everything on the data stack: ( acc n )
+  var fact = Asm()
+    .push(1).push(10)
+    .label("loop")
+      .dup().jz("done")          // stop when n == 0
+      .swap().over().mul()       // ( n acc*n )
+      .swap().push(1).sub()      // ( acc*n n-1 )
+      .jmp("loop")
+    .label("done")
+      .drop().out().cr()
+      .halt();
+  print "== listing: factorial ==";
+  fact.listing();
+  runProgram("factorial 10", fact);
+
+  // Fibonacci using variables.
+  runProgram("first 20 fibonacci numbers", Asm()
+    .push(0).store("a").push(1).store("b").push(20).store("n")
+    .label("loop")
+      .load("n").jz("end")
+      .load("a").out()
+      .load("a").load("b").add()
+      .load("b").store("a")
+      .store("b")
+      .load("n").push(1).sub().store("n")
+      .jmp("loop")
+    .label("end")
+      .cr().halt());
+
+  // Subroutines with call/ret: print squares of 1..12.
+  runProgram("squares via subroutine", Asm()
+    .push(1).store("i")
+    .label("loop")
+      .load("i").push(13).lt().jz("end")
+      .load("i").call("square").out()
+      .load("i").push(1).add().store("i")
+      .jmp("loop")
+    .label("end")
+      .cr().halt()
+    .label("square")
+      .dup().mul().ret());
+
+  // FizzBuzz-ish: numbers 1..30 divisible by 3 or 5, using mod.
+  runProgram("multiples of 3 or 5 below 31", Asm()
+    .push(1).store("i")
+    .label("loop")
+      .load("i").push(31).lt().jz("end")
+      .load("i").push(3).mod().jz("hit")
+      .load("i").push(5).mod().jz("hit")
+      .jmp("next")
+    .label("hit")
+      .load("i").out()
+    .label("next")
+      .load("i").push(1).add().store("i")
+      .jmp("loop")
+    .label("end")
+      .cr().halt());
+
+  // GCD by Euclid, as a recursive subroutine using the return stack.
+  runProgram("gcd(1071, 462) recursively", Asm()
+    .push(1071).push(462).call("gcd").out().cr().halt()
+    .label("gcd")                 // ( a b -- gcd )
+      .dup().jz("gcdDone")
+      .swap().over().mod()        // ( b a%b )
+      .call("gcd").ret()
+    .label("gcdDone")
+      .drop().ret());
+}
+
+main();

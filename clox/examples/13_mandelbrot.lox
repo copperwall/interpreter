@@ -1,0 +1,66 @@
+// ASCII Mandelbrot and Julia sets: floating-point arithmetic in tight nested
+// loops. Each character is how many iterations of z = z^2 + c it takes for
+// the point to escape ("@" = never escaped: inside the set).
+
+fun shade(i, max) {
+  if (i >= max) return "@";
+  if (i > 24) return "%";
+  if (i > 16) return "#";
+  if (i > 12) return "*";
+  if (i > 8) return "+";
+  if (i > 6) return "=";
+  if (i > 4) return "-";
+  if (i > 3) return ":";
+  if (i > 2) return ".";
+  return " ";
+}
+
+fun escapeTime(zr, zi, cr, ci, max) {
+  var i = 0;
+  while (i < max and zr * zr + zi * zi <= 4) {
+    var t = zr * zr - zi * zi + cr;
+    zi = 2 * zr * zi + ci;
+    zr = t;
+    i = i + 1;
+  }
+  return i;
+}
+
+// `iterate(x, y)` decides what the pixel at complex point x+yi is, so the
+// same renderer draws both fractals. Returns how many points were inside.
+fun render(xmin, xmax, ymin, ymax, width, height, max, iterate) {
+  var inside = 0;
+  for (var row = 0; row < height; row = row + 1) {
+    var y = ymax - (ymax - ymin) * row / (height - 1);
+    var line = "";
+    for (var col = 0; col < width; col = col + 1) {
+      var x = xmin + (xmax - xmin) * col / (width - 1);
+      var i = iterate(x, y);
+      if (i >= max) inside = inside + 1;
+      line = line + shade(i, max);
+    }
+    print line;
+  }
+  return inside;
+}
+
+var MAX = 64;
+
+// Mandelbrot: z starts at 0, c is the pixel.
+fun mandelbrot(x, y) { return escapeTime(0, 0, x, y, MAX); }
+
+// Julia: c is fixed, z starts at the pixel. A closure picks the constant.
+fun julia(cr, ci) {
+  fun iterate(x, y) { return escapeTime(x, y, cr, ci, MAX); }
+  return iterate;
+}
+
+var width = 72;
+var height = 28;   // even, so no row lands exactly on the real axis
+var inside = render(-2.2, 0.8, -1.2, 1.2, width, height, MAX, mandelbrot);
+print "";
+print "points inside the Mandelbrot set (of 72 x 28 = 2016):";
+print inside;
+print "";
+print "Julia set for c = -0.8 + 0.156i:";
+render(-1.6, 1.6, -0.9, 0.9, width, 24, MAX, julia(-0.8, 0.156));

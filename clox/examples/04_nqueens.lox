@@ -1,0 +1,147 @@
+// N-Queens by recursive backtracking. The partial board is an immutable cons
+// list of column positions (most recent row first), so "undoing" a move is
+// free: the recursive call simply gets a longer list and we drop it on return.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+// Can a queen go in `col` on the next row, given the queens already placed?
+fun safe(col, placed) {
+  var distance = 1;
+  for (var p = placed; p != nil; p = p.tail) {
+    var c = p.head;
+    if (c == col or c - col == distance or col - c == distance) return false;
+    distance = distance + 1;
+  }
+  return true;
+}
+
+// Calls onSolution(board) for every solution; returns the number found.
+fun solve(n, row, placed, onSolution) {
+  if (row == n) {
+    onSolution(placed);
+    return 1;
+  }
+  var count = 0;
+  for (var col = 0; col < n; col = col + 1) {
+    if (safe(col, placed)) {
+      count = count + solve(n, row + 1, Cons(col, placed), onSolution);
+    }
+  }
+  return count;
+}
+
+fun reverse(list) {
+  var out = nil;
+  for (var p = list; p != nil; p = p.tail) out = Cons(p.head, out);
+  return out;
+}
+
+fun show(n, board) {
+  for (var p = reverse(board); p != nil; p = p.tail) {
+    var line = "";
+    for (var c = 0; c < n; c = c + 1) {
+      if (c > 0) line = line + " ";
+      if (c == p.head) line = line + "Q";
+      else line = line + ".";
+    }
+    print "  " + line;
+  }
+}
+
+fun main() {
+  print "== Solutions per board size ==";
+  fun ignore(board) {}
+  for (var n = 1; n <= 9; n = n + 1) {
+    print "  " + str(n) + "x" + str(n) + ": " + str(solve(n, 0, nil, ignore));
+  }
+
+  // Closures capture state across the whole search: remember the first
+  // solution and count those that are left-right symmetric with themselves
+  // rotated 180 degrees.
+  var first = nil;
+  var symmetric = 0;
+  var size = 8;
+  fun record(board) {
+    if (first == nil) first = board;
+    // 180-degree rotation: row r, col c -> row n-1-r, col n-1-c.
+    // Reading the board backwards gives rows in reverse order.
+    var ok = true;
+    var fwd = reverse(board);
+    for (var p = board; p != nil; p = p.tail) {
+      if (fwd.head != size - 1 - p.head) ok = false;
+      fwd = fwd.tail;
+    }
+    if (ok) symmetric = symmetric + 1;
+  }
+  var total = solve(size, 0, nil, record);
+
+  print "";
+  print "== First 8x8 solution ==";
+  show(size, first);
+  print "";
+  print "8x8: " + str(total) + " solutions, " + str(symmetric) + " symmetric under 180-degree rotation";
+}
+
+main();

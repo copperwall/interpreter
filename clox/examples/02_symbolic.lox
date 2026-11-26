@@ -1,0 +1,240 @@
+// Symbolic algebra: an expression tree of polymorphic node classes.
+// Every node knows how to eval(), show(), differentiate and simplify itself.
+// There's no `instanceof` in Lox, so type tests are themselves dynamically
+// dispatched methods (isNum/isZero/isOne) with defaults on the base class.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+// Variable bindings as an immutable linked environment.
+class Env {
+  init(name, value, parent) {
+    this.name = name;
+    this.value = value;
+    this.parent = parent;
+  }
+  lookup(name) {
+    for (var e = this; e != nil; e = e.parent) {
+      if (e.name == name) return e.value;
+    }
+    print "unbound variable " + name;
+    return nil;
+  }
+}
+
+class Expr {
+  isNum() { return false; }
+  isZero() { return false; }
+  isOne() { return false; }
+  isMulByConst() { return false; }
+  simplify() { return this; }
+}
+
+class Num < Expr {
+  init(n) { this.n = n; }
+  eval(env) { return this.n; }
+  show() {
+    if (this.n < 0) return "(" + fmt(this.n) + ")";
+    return fmt(this.n);
+  }
+  deriv(v) { return Num(0); }
+  isNum() { return true; }
+  isZero() { return this.n == 0; }
+  isOne() { return this.n == 1; }
+}
+
+class Var < Expr {
+  init(name) { this.name = name; }
+  eval(env) { return env.lookup(this.name); }
+  show() { return this.name; }
+  deriv(v) {
+    if (v == this.name) return Num(1);
+    return Num(0);
+  }
+}
+
+// Shared behaviour for binary operators: subclasses supply op(), symbol()
+// and make() (a constructor for "another one of me").
+class Binary < Expr {
+  init(l, r) {
+    this.l = l;
+    this.r = r;
+  }
+  eval(env) { return this.op(this.l.eval(env), this.r.eval(env)); }
+  show() { return "(" + this.l.show() + " " + this.symbol() + " " + this.r.show() + ")"; }
+  simplify() {
+    var l = this.l.simplify();
+    var r = this.r.simplify();
+    if (l.isNum() and r.isNum()) return Num(this.op(l.n, r.n));  // constant folding
+    return this.rewrite(l, r);
+  }
+  rewrite(l, r) { return this.make(l, r); }
+}
+
+class Add < Binary {
+  op(a, b) { return a + b; }
+  symbol() { return "+"; }
+  make(l, r) { return Add(l, r); }
+  deriv(v) { return Add(this.l.deriv(v), this.r.deriv(v)); }
+  rewrite(l, r) {
+    if (l.isZero()) return r;
+    if (r.isZero()) return l;
+    return super.rewrite(l, r);
+  }
+}
+
+class Sub < Binary {
+  op(a, b) { return a - b; }
+  symbol() { return "-"; }
+  make(l, r) { return Sub(l, r); }
+  deriv(v) { return Sub(this.l.deriv(v), this.r.deriv(v)); }
+  rewrite(l, r) {
+    if (r.isZero()) return l;
+    return super.rewrite(l, r);
+  }
+}
+
+class Mul < Binary {
+  op(a, b) { return a * b; }
+  symbol() { return "*"; }
+  make(l, r) { return Mul(l, r); }
+  // product rule
+  deriv(v) {
+    return Add(Mul(this.l.deriv(v), this.r), Mul(this.l, this.r.deriv(v)));
+  }
+  rewrite(l, r) {
+    if (l.isZero() or r.isZero()) return Num(0);
+    if (l.isOne()) return r;
+    if (r.isOne()) return l;
+    // keep constants on the left: x * 3 -> 3 * x
+    if (r.isNum()) return Mul(r, l);
+    // fold nested constants: 2 * (3 * x) -> 6 * x
+    if (l.isNum() and r.isMulByConst()) return Mul(Num(l.n * r.l.n), r.r);
+    return super.rewrite(l, r);
+  }
+  isMulByConst() { return this.l.isNum(); }
+}
+
+class Neg < Expr {
+  init(e) { this.e = e; }
+  eval(env) { return -this.e.eval(env); }
+  show() { return "-" + this.e.show(); }
+  deriv(v) { return Neg(this.e.deriv(v)); }
+  simplify() {
+    var e = this.e.simplify();
+    if (e.isNum()) return Num(-e.n);
+    return Neg(e);
+  }
+}
+
+// Small constructors so expressions read naturally.
+fun n(x) { return Num(x); }
+fun v(name) { return Var(name); }
+fun add(a, b) { return Add(a, b); }
+fun sub(a, b) { return Sub(a, b); }
+fun mul(a, b) { return Mul(a, b); }
+
+fun report(label, e, variable, env) {
+  var d = e.deriv(variable);
+  var ds = d.simplify();
+  print "== " + label + " ==";
+  print "  f            = " + e.show();
+  print "  f'  (raw)    = " + d.show();
+  print "  f'  (simple) = " + ds.show();
+  print "  f(env)       = " + fmt(e.eval(env));
+  print "  f'(env)      = " + fmt(ds.eval(env));
+  // The simplifier must never change the value.
+  if (d.eval(env) != ds.eval(env)) print "  !! simplifier changed the result";
+}
+
+// Driver code lives in a function: the top-level script chunk can only hold
+// 256 constants, and every global name and string literal uses one.
+fun main() {
+  var x = v("x");
+  var y = v("y");
+  var env = Env("x", 2, Env("y", 5, nil));
+
+  // 3x^2 + 2x + 1
+  report("polynomial", add(add(mul(n(3), mul(x, x)), mul(n(2), x)), n(1)), "x", env);
+
+  // x * y + y * 4 - 7, differentiated with respect to y
+  report("two variables (d/dy)", sub(add(mul(x, y), mul(y, n(4))), n(7)), "y", env);
+
+  // (x + 1)(x - 1) = x^2 - 1, so f' = 2x
+  report("product rule", mul(add(x, n(1)), sub(x, n(1))), "x", env);
+
+  // -(x * x * x)
+  report("negation", Neg(mul(x, mul(x, x))), "x", env);
+
+  // Constant folding on its own.
+  var c = mul(add(n(2), n(3)), mul(n(4), add(x, n(0))));
+  print "== constant folding ==";
+  print "  " + c.show() + "  =>  " + c.simplify().show();
+
+  // Higher-order derivatives: keep differentiating until we hit zero.
+  print "== successive derivatives of x^4 ==";
+  var e = mul(mul(x, x), mul(x, x));
+  var order = 0;
+  while (!e.isZero()) {
+    print "  d" + str(order) + " = " + e.show();
+    e = e.deriv("x").simplify();
+    order = order + 1;
+  }
+  print "  d" + str(order) + " = " + e.show();
+}
+
+main();

@@ -1,0 +1,219 @@
+// Conway's Game of Life on a torus. With no arrays, the board is an object
+// graph: every Cell holds direct references to its eight neighbours, wired up
+// once. After that, each generation is just message passing between cells.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+fun nth(list, i) {
+  var p = list;
+  for (var k = 0; k < i; k = k + 1) p = p.tail;
+  return p.head;
+}
+
+class Cell {
+  init() {
+    this.alive = false;
+    this.nextAlive = false;
+    this.neighbors = nil;
+  }
+  liveNeighbors() {
+    var n = 0;
+    for (var p = this.neighbors; p != nil; p = p.tail) {
+      if (p.head.alive) n = n + 1;
+    }
+    return n;
+  }
+  // Two phases so every cell decides from the same generation.
+  decide() {
+    var n = this.liveNeighbors();
+    this.nextAlive = n == 3 or (this.alive and n == 2);
+  }
+  commit() { this.alive = this.nextAlive; }
+}
+
+class Board {
+  init(rows, cols) {
+    this.rows = rows;
+    this.cols = cols;
+    this.generation = 0;
+    // Build rows as lists of cells (built back to front so index 0 is first).
+    this.grid = nil;
+    for (var r = 0; r < rows; r = r + 1) {
+      var row = nil;
+      for (var c = 0; c < cols; c = c + 1) row = Cons(Cell(), row);
+      this.grid = Cons(row, this.grid);
+    }
+    // Flat list of all cells for fast iteration.
+    this.all = nil;
+    for (var r = 0; r < rows; r = r + 1) {
+      for (var c = 0; c < cols; c = c + 1) {
+        var cell = this.at(r, c);
+        this.all = Cons(cell, this.all);
+        for (var dr = -1; dr <= 1; dr = dr + 1) {
+          for (var dc = -1; dc <= 1; dc = dc + 1) {
+            if (dr != 0 or dc != 0) {
+              cell.neighbors = Cons(this.at(r + dr, c + dc), cell.neighbors);
+            }
+          }
+        }
+      }
+    }
+  }
+  // Wraps around the edges.
+  at(r, c) { return nth(nth(this.grid, mod(r, this.rows)), mod(c, this.cols)); }
+
+  // Place a pattern given as rows of "#" / "." strings (a cons list).
+  place(top, left, pattern) {
+    var r = top;
+    for (var p = pattern; p != nil; p = p.tail) {
+      this.placeRow(r, left, p.head);
+      r = r + 1;
+    }
+  }
+  // Lox can't index into strings, so the row is a list of booleans.
+  placeRow(r, left, cells) {
+    var c = left;
+    for (var p = cells; p != nil; p = p.tail) {
+      if (p.head) this.at(r, c).alive = true;
+      c = c + 1;
+    }
+  }
+
+  step() {
+    for (var p = this.all; p != nil; p = p.tail) p.head.decide();
+    for (var p = this.all; p != nil; p = p.tail) p.head.commit();
+    this.generation = this.generation + 1;
+  }
+
+  population() {
+    var n = 0;
+    for (var p = this.all; p != nil; p = p.tail) if (p.head.alive) n = n + 1;
+    return n;
+  }
+
+  // The whole board as one string (strings compare by value).
+  snapshot() {
+    var s = "";
+    for (var p = this.all; p != nil; p = p.tail) {
+      if (p.head.alive) s = s + "#";
+      else s = s + ".";
+    }
+    return s;
+  }
+
+  show() {
+    print "generation " + str(this.generation) + ", population " + str(this.population());
+    for (var rp = this.grid; rp != nil; rp = rp.tail) {
+      var line = "";
+      for (var cp = rp.head; cp != nil; cp = cp.tail) {
+        if (cp.head.alive) line = line + "#";
+        else line = line + ".";
+      }
+      print "  " + line;
+    }
+  }
+}
+
+// Pattern rows built from booleans.
+var X = true;
+var _ = false;
+fun row3(a, b, c) { return Cons(a, Cons(b, Cons(c, nil))); }
+
+fun main() {
+  var board = Board(10, 16);
+
+  // A glider in the top-left...
+  board.place(0, 1, Cons(row3(_, X, _), Cons(row3(_, _, X), Cons(row3(X, X, X), nil))));
+  // ...a blinker on the right...
+  board.place(2, 11, Cons(row3(X, X, X), nil));
+  // ...and a block (still life) at the bottom.
+  board.place(7, 12, Cons(row3(X, X, _), Cons(row3(X, X, _), nil)));
+
+  board.show();
+  for (var i = 0; i < 4; i = i + 1) {
+    board.step();
+    board.show();
+  }
+
+  // A glider moves one cell diagonally every 4 generations, so on an 8x8
+  // torus it wraps around both edges and is back where it started after 32.
+  var torus = Board(8, 8);
+  torus.place(0, 0, Cons(row3(_, X, _), Cons(row3(_, _, X), Cons(row3(X, X, X), nil))));
+  var start = torus.snapshot();
+  for (var i = 0; i < 32; i = i + 1) {
+    torus.step();
+    if (i == 15) {
+      print "";
+      print "lone glider on an 8x8 torus, halfway round:";
+      torus.show();
+    }
+  }
+  print "";
+  print "after 32 generations:";
+  torus.show();
+  print "back to the starting position? " + (torus.snapshot() == start and "yes" or "no");
+}
+
+main();

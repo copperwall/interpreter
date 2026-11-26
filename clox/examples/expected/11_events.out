@@ -1,0 +1,16 @@
+listeners on quote: 4
+[log] #1 LOX @ 100.00
+  avg of 1 = 100.00
+  (first quote ever seen: 100.00)
+listeners after the once-handler fired: 3
+[log] #2 LOX @ 112.50
+  avg of 2 = 106.25
+  ALERT: LOX above 110
+[log] #3 LOX @ 108.25
+  avg of 3 = 106.92
+-- unsubscribing the >110 alert and the logger --
+  avg of 4 = 110.19
+  avg of 5 = 107.15
+  !! CRASH: LOX fell to 95.00
+logger saw 3 quotes before unsubscribing
+handlers run for an event nobody listens to: 0

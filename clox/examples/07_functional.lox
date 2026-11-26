@@ -1,0 +1,245 @@
+// A small functional-programming toolkit: immutable cons lists, map/filter/
+// reduce, composition, currying, partial application, memoization and once.
+// Lox has no lambda expressions, so every function value is a named local
+// `fun` declaration.
+
+// ---- prelude: number formatting (clox has no num->string conversion) ----
+// Copied verbatim into each example that needs it, since clox has no imports.
+fun floor(x) {
+  if (x < 0) {
+    var f = -floor(-x);
+    if (f != x) return f - 1;
+    return f;
+  }
+  // Greedily add powers of two: O(log x), no native floor needed.
+  var p = 1;
+  while (p * 2 <= x) p = p * 2;
+  var r = 0;
+  while (p >= 1) {
+    if (r + p <= x) r = r + p;
+    p = p / 2;
+  }
+  return r;
+}
+fun mod(a, b) { return a - b * floor(a / b); }
+fun digit(d) {
+  if (d == 0) return "0"; if (d == 1) return "1"; if (d == 2) return "2";
+  if (d == 3) return "3"; if (d == 4) return "4"; if (d == 5) return "5";
+  if (d == 6) return "6"; if (d == 7) return "7"; if (d == 8) return "8";
+  return "9";
+}
+// Integer -> string.
+fun str(n) {
+  if (n < 0) return "-" + str(-n);
+  if (n < 10) return digit(n);
+  var q = floor(n / 10);
+  return str(q) + digit(n - q * 10);
+}
+// Number -> string with a fixed number of decimal places.
+fun fixed(n, places) {
+  if (n < 0) return "-" + fixed(-n, places);
+  var scale = 1;
+  for (var i = 0; i < places; i = i + 1) scale = scale * 10;
+  var v = floor(n * scale + 0.5);
+  var whole = floor(v / scale);
+  var f = v - whole * scale;
+  var s = "";
+  for (var i = 0; i < places; i = i + 1) {
+    scale = scale / 10;
+    var d = floor(f / scale);
+    s = s + digit(d);
+    f = f - d * scale;
+  }
+  if (places == 0) return str(whole);
+  return str(whole) + "." + s;
+}
+// Integers print plainly, everything else with 3 decimals.
+fun fmt(n) {
+  if (floor(n) == n) return str(n);
+  return fixed(n, 3);
+}
+// -------------------------------------------------------------------------
+
+class Cons {
+  init(head, tail) {
+    this.head = head;
+    this.tail = tail;
+  }
+}
+
+// List operations are iterative: the VM only has 64 call frames, so
+// recursing once per element would overflow on lists longer than ~60.
+fun reverse(list) {
+  var out = nil;
+  for (var p = list; p != nil; p = p.tail) out = Cons(p.head, out);
+  return out;
+}
+fun range(lo, hi) {
+  var out = nil;
+  for (var i = hi - 1; i >= lo; i = i - 1) out = Cons(i, out);
+  return out;
+}
+fun map(f, list) {
+  var out = nil;
+  for (var p = list; p != nil; p = p.tail) out = Cons(f(p.head), out);
+  return reverse(out);
+}
+fun filter(pred, list) {
+  var out = nil;
+  for (var p = list; p != nil; p = p.tail) if (pred(p.head)) out = Cons(p.head, out);
+  return reverse(out);
+}
+fun reduce(f, acc, list) {
+  for (var p = list; p != nil; p = p.tail) acc = f(acc, p.head);
+  return acc;
+}
+fun zipWith(f, a, b) {
+  var out = nil;
+  while (a != nil and b != nil) {
+    out = Cons(f(a.head, b.head), out);
+    a = a.tail;
+    b = b.tail;
+  }
+  return reverse(out);
+}
+fun takeWhile(pred, list) {
+  var out = nil;
+  for (var p = list; p != nil and pred(p.head); p = p.tail) out = Cons(p.head, out);
+  return reverse(out);
+}
+fun show(list) {
+  var s = "[";
+  for (var p = list; p != nil; p = p.tail) {
+    s = s + fmt(p.head);
+    if (p.tail != nil) s = s + ", ";
+  }
+  return s + "]";
+}
+
+// --- Function combinators ----------------------------------------------------
+fun compose(f, g) {
+  fun h(x) { return f(g(x)); }
+  return h;
+}
+// pipe(f, g, h) as nested composes: left-to-right application.
+fun pipe3(f, g, h) { return compose(h, compose(g, f)); }
+fun curry2(f) {
+  fun takeA(a) {
+    fun takeB(b) { return f(a, b); }
+    return takeB;
+  }
+  return takeA;
+}
+fun uncurry2(f) {
+  fun both(a, b) { return f(a)(b); }
+  return both;
+}
+fun flip(f) {
+  fun flipped(a, b) { return f(b, a); }
+  return flipped;
+}
+fun partial(f, a) {
+  fun rest(b) { return f(a, b); }
+  return rest;
+}
+fun not(pred) {
+  fun negated(x) { return !pred(x); }
+  return negated;
+}
+// Wrap a one-argument function so each distinct input is computed only once.
+// The cache is an association list living in the closure.
+fun memoize(f) {
+  var cache = nil;
+  fun memo(x) {
+    for (var p = cache; p != nil; p = p.tail) {
+      if (p.head.head == x) return p.head.tail;
+    }
+    var v = f(x);
+    cache = Cons(Cons(x, v), cache);
+    return v;
+  }
+  return memo;
+}
+fun once(f) {
+  var done = false;
+  var result;
+  fun wrapper(x) {
+    if (!done) {
+      done = true;
+      result = f(x);
+    }
+    return result;
+  }
+  return wrapper;
+}
+
+// --- Plain functions to plug in ---------------------------------------------
+fun add(a, b) { return a + b; }
+fun mul(a, b) { return a * b; }
+fun sub(a, b) { return a - b; }
+fun square(x) { return x * x; }
+fun inc(x) { return x + 1; }
+fun double(x) { return x * 2; }
+fun isOdd(x) { return mod(x, 2) == 1; }
+fun max(a, b) { if (a > b) return a; return b; }
+
+fun main() {
+  var xs = range(1, 11);
+  print "xs                    = " + show(xs);
+  print "map square            = " + show(map(square, xs));
+  print "filter odd            = " + show(filter(isOdd, xs));
+  print "filter (not odd)      = " + show(filter(not(isOdd), xs));
+  print "sum                   = " + str(reduce(add, 0, xs));
+  print "product               = " + str(reduce(mul, 1, xs));
+  print "sum of odd squares    = " + str(reduce(add, 0, map(square, filter(isOdd, xs))));
+  print "max                   = " + str(reduce(max, 0, map(square, xs)));
+  print "zipWith mul xs xs     = " + show(zipWith(mul, xs, xs));
+  fun small(x) { return x * x < 30; }
+  print "takeWhile x^2 < 30    = " + show(takeWhile(small, xs));
+
+  print "";
+  var incThenDouble = compose(double, inc);
+  var doubleThenInc = compose(inc, double);
+  print "compose(double, inc)(5) = " + str(incThenDouble(5));
+  print "compose(inc, double)(5) = " + str(doubleThenInc(5));
+  print "pipe3(inc, double, square)(3) = " + str(pipe3(inc, double, square)(3));
+
+  var cadd = curry2(add);
+  var add10 = cadd(10);
+  print "curry2(add)(10)(5)    = " + str(add10(5));
+  print "map (curry2 add 100)  = " + show(map(cadd(100), range(1, 4)));
+  print "uncurry2(curry2(mul))(6, 7) = " + str(uncurry2(curry2(mul))(6, 7));
+  print "flip(sub)(10, 3)      = " + str(flip(sub)(10, 3));
+  print "partial(sub, 100)(1)  = " + str(partial(sub, 100)(1));
+  // Reduce with a flipped Cons builds the list backwards: a fold-based reverse.
+  fun cons(a, b) { return Cons(a, b); }
+  print "fold-reverse          = " + show(reduce(flip(cons), nil, xs));
+
+  print "";
+  // Memoized fibonacci: the recursive calls go through the memo table, so
+  // this is linear instead of exponential. (Each level uses two call frames,
+  // fib -> memo, so n must stay under ~30 with the 64-frame VM limit.)
+  var calls = 0;
+  var fib;
+  fun slowFib(n) {
+    calls = calls + 1;
+    if (n < 2) return n;
+    return fib(n - 1) + fib(n - 2);
+  }
+  fib = memoize(slowFib);
+  print "memoized fib(25)      = " + str(fib(25)) + " in " + str(calls) + " calls";
+  calls = 0;
+  print "fib(25) again         = " + str(fib(25)) + " in " + str(calls) + " calls";
+
+  var initCount = 0;
+  fun setup(x) {
+    initCount = initCount + 1;
+    return "configured with " + x;
+  }
+  var init = once(setup);
+  init("first");
+  init("second");
+  print "once: " + init("third") + " (ran " + str(initCount) + " time)";
+}
+
+main();
